@@ -2,9 +2,8 @@
 Tests for cogs/change_order_multistep.py — the multi-step /changeorderpro command.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import discord
-import src.cogs.change_order_multistep as co_ms
 from src.cogs.change_order_multistep import (
     ScopeModal,
     AddMaterialModal,
@@ -45,28 +44,33 @@ class TestScopeModal:
         return modal
 
     async def test_creates_draft_on_submit(self, mock_interaction):
-        modal = self._make_modal()
-        await modal.on_submit(mock_interaction)
+        await self._make_modal().on_submit(mock_interaction)
         assert mock_interaction.user.id in drafts
 
     async def test_draft_contains_correct_scope(self, mock_interaction):
-        modal = self._make_modal(scope="Run new circuits")
-        await modal.on_submit(mock_interaction)
+        await self._make_modal(scope="Run new circuits").on_submit(mock_interaction)
         assert drafts[mock_interaction.user.id]["scope"] == "Run new circuits"
 
     async def test_sends_message_with_embed_and_view(self, mock_interaction):
-        modal = self._make_modal()
-        await modal.on_submit(mock_interaction)
+        await self._make_modal().on_submit(mock_interaction)
         mock_interaction.response.send_message.assert_called_once()
         kwargs = mock_interaction.response.send_message.call_args.kwargs
         assert isinstance(kwargs.get("embed"), discord.Embed)
         assert isinstance(kwargs.get("view"), DraftView)
-    
+
+    async def test_view_message_set_after_submit(self, mock_interaction, mock_message):
+        await self._make_modal().on_submit(mock_interaction)
+        sent_view = mock_interaction.response.send_message.call_args.kwargs["view"]
+        assert sent_view.message is mock_message
+
     async def test_invalid_date_format_sends_ephemeral_error(self, mock_interaction):
-        modal = self._make_modal(date="2026-03-15")
-        await modal.on_submit(mock_interaction)
-        call_kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert call_kwargs.get("ephemeral") is True
+        await self._make_modal(date="2026-03-15").on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_invalid_date_does_not_create_draft(self, mock_interaction):
+        await self._make_modal(date="2026-03-15").on_submit(mock_interaction)
+        assert mock_interaction.user.id not in drafts
+
 
 # ---------------------------------------------------------------------------
 # AddMaterialModal
@@ -85,35 +89,28 @@ class TestAddMaterialModal:
 
     async def test_adds_material_to_draft(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
-        modal = self._make_modal(mock_interaction.user.id, mock_message)
-        await modal.on_submit(mock_interaction)
+        await self._make_modal(mock_interaction.user.id, mock_message).on_submit(mock_interaction)
         assert ("Breaker", "3") in drafts[mock_interaction.user.id]["materials"]
 
     async def test_non_numeric_quantity_sends_ephemeral_error(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
-        modal = self._make_modal(mock_interaction.user.id, mock_message, qty="lots")
-        await modal.on_submit(mock_interaction)
-        kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        await self._make_modal(mock_interaction.user.id, mock_message, qty="lots").on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_missing_draft_sends_ephemeral_error(self, mock_interaction, mock_message):
-        # No draft seeded — user ID unknown
-        modal = self._make_modal(mock_interaction.user.id, mock_message)
-        await modal.on_submit(mock_interaction)
-        kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        await self._make_modal(mock_interaction.user.id, mock_message).on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_message_edited_after_add(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
-        modal = self._make_modal(mock_interaction.user.id, mock_message)
-        await modal.on_submit(mock_interaction)
+        await self._make_modal(mock_interaction.user.id, mock_message).on_submit(mock_interaction)
         mock_message.edit.assert_called_once()
 
     async def test_decimal_quantity_accepted(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
-        modal = self._make_modal(mock_interaction.user.id, mock_message, qty="2.5")
-        await modal.on_submit(mock_interaction)
+        await self._make_modal(mock_interaction.user.id, mock_message, qty="2.5").on_submit(mock_interaction)
         assert ("Breaker", "2.5") in drafts[mock_interaction.user.id]["materials"]
+
 
 # ---------------------------------------------------------------------------
 # DraftView buttons
@@ -126,18 +123,14 @@ class TestDraftViewUndoLast:
         _seed_draft(mock_interaction.user.id)
         drafts[mock_interaction.user.id]["materials"] = [("A", "1"), ("B", "2")]
         mock_interaction.message = mock_message
-
-        view = DraftView(mock_interaction.user.id)
-        await view.undo_last.callback(mock_interaction)
-
+        await DraftView(mock_interaction.user.id).undo_last.callback(mock_interaction)
         assert drafts[mock_interaction.user.id]["materials"] == [("A", "1")]
 
     async def test_undo_empty_sends_ephemeral(self, mock_interaction):
         _seed_draft(mock_interaction.user.id)
-        view = DraftView(mock_interaction.user.id)
-        await view.undo_last.callback(mock_interaction)
-        kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        await DraftView(mock_interaction.user.id).undo_last.callback(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
 
 class TestDraftViewDone:
     def setup_method(self):
@@ -146,32 +139,25 @@ class TestDraftViewDone:
     async def test_done_removes_draft(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         mock_interaction.message = mock_message
-
-        view = DraftView(mock_interaction.user.id)
-        await view.done.callback(mock_interaction)
-
+        await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
         assert mock_interaction.user.id not in drafts
 
     async def test_done_disables_all_buttons(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         mock_interaction.message = mock_message
-
         view = DraftView(mock_interaction.user.id)
         await view.done.callback(mock_interaction)
-
         assert all(child.disabled for child in view.children)
 
     async def test_done_edits_message_with_final_embed(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         mock_interaction.message = mock_message
-
-        view = DraftView(mock_interaction.user.id)
-        await view.done.callback(mock_interaction)
-
+        await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
         mock_message.edit.assert_called_once()
         edited_embed = mock_message.edit.call_args.kwargs.get("embed")
         assert isinstance(edited_embed, discord.Embed)
         assert "Submitted" in edited_embed.title
+
 
 class TestDraftViewCancel:
     def setup_method(self):
@@ -180,36 +166,72 @@ class TestDraftViewCancel:
     async def test_cancel_removes_draft(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         mock_interaction.message = mock_message
-
-        view = DraftView(mock_interaction.user.id)
-        await view.cancel.callback(mock_interaction)
+        await DraftView(mock_interaction.user.id).cancel.callback(mock_interaction)
         assert mock_interaction.user.id not in drafts
 
     async def test_cancel_disables_all_buttons(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         mock_interaction.message = mock_message
-
         view = DraftView(mock_interaction.user.id)
         await view.cancel.callback(mock_interaction)
-
         assert all(child.disabled for child in view.children)
+
+
+# ---------------------------------------------------------------------------
+# DraftView on_timeout
+# ---------------------------------------------------------------------------
+class TestDraftViewOnTimeout:
+    def setup_method(self):
+        _clear_drafts()
+
+    async def test_timeout_removes_draft(self, mock_message):
+        _seed_draft(123)
+        view = DraftView(user_id=123)
+        view.message = mock_message
+        await view.on_timeout()
+        assert 123 not in drafts
+
+    async def test_timeout_disables_all_buttons(self, mock_message):
+        _seed_draft(123)
+        view = DraftView(user_id=123)
+        view.message = mock_message
+        await view.on_timeout()
+        assert all(child.disabled for child in view.children)
+
+    async def test_timeout_edits_message_with_expiry_notice(self, mock_message):
+        _seed_draft(123)
+        view = DraftView(user_id=123)
+        view.message = mock_message
+        await view.on_timeout()
+        mock_message.edit.assert_called_once()
+        assert "expired" in mock_message.edit.call_args.kwargs.get("content", "").lower()
+
+    async def test_timeout_without_message_does_not_raise(self):
+        _seed_draft(123)
+        view = DraftView(user_id=123)
+        await view.on_timeout()  # message is None by default — should not raise
+
+    async def test_timeout_handles_deleted_message_gracefully(self, mock_message):
+        _seed_draft(123)
+        view = DraftView(user_id=123)
+        view.message = mock_message
+        mock_message.edit = AsyncMock(side_effect=discord.NotFound(MagicMock(), ""))
+        await view.on_timeout()  # should not raise
+
 
 # ---------------------------------------------------------------------------
 # DraftView interaction_check
 # ---------------------------------------------------------------------------
 class TestDraftViewInteractionCheck:
     async def test_wrong_user_blocked(self, mock_interaction):
-        view = DraftView(user_id=999)  # Different from mock_interaction.user.id (123456789)
-        result = await view.interaction_check(mock_interaction)
+        result = await DraftView(user_id=999).interaction_check(mock_interaction)
         assert result is False
-        mock_interaction.response.send_message.assert_called_once()
-        kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_correct_user_allowed(self, mock_interaction):
-        view = DraftView(user_id=mock_interaction.user.id)
-        result = await view.interaction_check(mock_interaction)
+        result = await DraftView(user_id=mock_interaction.user.id).interaction_check(mock_interaction)
         assert result is True
+
 
 # ---------------------------------------------------------------------------
 # ChangeOrderMultiStep cog
@@ -219,17 +241,13 @@ class TestChangeOrderMultiStepCog:
         _clear_drafts()
 
     async def test_opens_modal_when_no_existing_draft(self, mock_interaction):
-        bot = MagicMock()
-        cog = ChangeOrderMultiStep(bot)
+        cog = ChangeOrderMultiStep(MagicMock())
         await cog.change_order_pro.callback(cog, mock_interaction)
         mock_interaction.response.send_modal.assert_called_once()
 
     async def test_blocks_second_draft(self, mock_interaction):
         _seed_draft(mock_interaction.user.id)
-        bot = MagicMock()
-        cog = ChangeOrderMultiStep(bot)
+        cog = ChangeOrderMultiStep(MagicMock())
         await cog.change_order_pro.callback(cog, mock_interaction)
-        # Should NOT open a modal — should send an ephemeral warning instead
         mock_interaction.response.send_modal.assert_not_called()
-        kwargs = mock_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True

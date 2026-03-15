@@ -39,12 +39,16 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             "materials": [],
         }
         draft = drafts[interaction.user.id]
+        view = DraftView(interaction.user.id)
         embed = _draft_embed(interaction.user, draft)
         await interaction.response.send_message(
             content="Draft created! Add materials below, then click **Done** when finished.",
             embed=embed,
-            view=DraftView(interaction.user.id),
+            view=view
         )
+
+        # Store the message reference so on_timeout can edit it
+        view.message = await interaction.original_response()
 
 
 # ---------------------------------------------------------------------------
@@ -130,12 +134,24 @@ class DraftView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=3600)
         self.user_id = user_id
+        self.message: discord.Message | None = None
     
     async def on_timeout(self):
         """
         Auto clean-up draft on timeout to avoid memory leaks and user lockout
         """
         drafts.pop(self.user_id, None)
+        if self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(
+                    content="⏱️ Change order expired due to inactivity.",
+                    embed=None,
+                    view=self,
+                )
+            except discord.NotFound:
+                pass  # Message was deleted — nothing to edit
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
