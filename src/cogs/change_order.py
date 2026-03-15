@@ -38,9 +38,15 @@ class MaterialsModal(discord.ui.Modal, title="Change Order"):
             )
             return
 
+        try:
+            date = resolve_date(self.date_requested.value)
+        except ValueError as e:
+            await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
+            return
+
         embed = build_change_order_embed(
             user=interaction.user,
-            date=resolve_date(self.date_requested.value),
+            date=date,
             submitted_at=discord_timestamp(),
             scope=self.scope_added.value.strip(),
             material_list=material_list,

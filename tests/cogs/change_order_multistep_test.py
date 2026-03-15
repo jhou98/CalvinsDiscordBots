@@ -61,6 +61,12 @@ class TestScopeModal:
         kwargs = mock_interaction.response.send_message.call_args.kwargs
         assert isinstance(kwargs.get("embed"), discord.Embed)
         assert isinstance(kwargs.get("view"), DraftView)
+    
+    async def test_invalid_date_format_sends_ephemeral_error(self, mock_interaction):
+        modal = self._make_modal(date="2026-03-15")
+        await modal.on_submit(mock_interaction)
+        call_kwargs = mock_interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
 
 # ---------------------------------------------------------------------------
 # AddMaterialModal

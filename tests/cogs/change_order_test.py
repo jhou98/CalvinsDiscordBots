@@ -51,6 +51,12 @@ class TestMaterialsModalOnSubmit:
         embed = mock_interaction.response.send_message.call_args.kwargs["embed"]
         date_field = next(f for f in embed.fields if "Date" in f.name)
         assert date_field.value == "06/15/2025"
+    
+    async def test_invalid_date_format_sends_ephemeral_error(self, mock_interaction):
+        modal = self._make_modal(date="2026-03-15")
+        await modal.on_submit(mock_interaction)
+        call_kwargs = mock_interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
 
 # ---------------------------------------------------------------------------
 # ChangeOrder cog

@@ -6,7 +6,6 @@ from src.helpers.helpers import resolve_date, discord_timestamp, build_change_or
 # In-memory draft store  { user_id: { date, submitted_at, scope, materials } }
 drafts: dict[int, dict] = {}
 
-
 # ---------------------------------------------------------------------------
 # Modal 1: Date + Scope
 # ---------------------------------------------------------------------------
@@ -27,8 +26,14 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        try:
+            date = resolve_date(self.date_requested.value)
+        except ValueError as e:
+            await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
+            return
+        
         drafts[interaction.user.id] = {
-            "date": resolve_date(self.date_requested.value),
+            "date": date,
             "submitted_at": discord_timestamp(),
             "scope": self.scope_added.value.strip(),
             "materials": [],

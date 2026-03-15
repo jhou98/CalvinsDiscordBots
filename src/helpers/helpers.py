@@ -11,11 +11,19 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 # Date helpers
 # ---------------------------------------------------------------------------
-
 def resolve_date(raw: str) -> str:
-    """Return raw date string if provided, otherwise today's date as MM/DD/YYYY."""
-    return raw.strip() if raw.strip() else datetime.today().strftime("%m/%d/%Y")
-
+    """
+    Return raw date string if provided and valid (MM/DD/YYYY), otherwise today's date.
+    Raises ValueError if a non-empty string is provided in the wrong format.
+    """
+    if not raw.strip():
+        return datetime.today().strftime("%m/%d/%Y")
+    try:
+        datetime.strptime(raw.strip(), "%m/%d/%Y")
+    except ValueError:
+        raise ValueError(f"Invalid date format `{raw.strip()}` — expected MM/DD/YYYY (e.g. `03/15/2026`).")
+    
+    return raw.strip()
 
 def discord_timestamp() -> str:
     """Return a Discord-formatted timestamp that renders in each user's local timezone."""
