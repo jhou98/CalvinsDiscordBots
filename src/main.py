@@ -8,15 +8,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
+class CalvinBot(commands.Bot):
+    async def setup_hook(self):
+        await self.load_extension("src.cogs.change_order")
+        await self.load_extension("src.cogs.change_order_multistep")
+        await self.tree.sync()
+
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = CalvinBot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.load_extension("cogs.change_order")           # /changeorder      (single modal)
-    await bot.load_extension("cogs.change_order_multistep") # /changeorderpro  (multi-step + buttons)
-    await bot.tree.sync()
-    # await bot.tree.sync(guild=discord.Object(id=436728989651042304))  # instant sync with specific server-id
     print(f"Logged in as {bot.user}")
     print("Commands registered:")
     print("  /changeorder      — single modal, freeform material list")
