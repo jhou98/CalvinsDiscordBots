@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from .utils import resolve_date, discord_timestamp, parse_materials, build_change_order_embed
+from helpers.helpers import resolve_date, discord_timestamp, parse_materials, build_change_order_embed
 
 class MaterialsModal(discord.ui.Modal, title="Change Order"):
 

@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from .utils import resolve_date, discord_timestamp, build_change_order_embed
+from helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed
 
 # In-memory draft store  { user_id: { date, submitted_at, scope, materials } }
 drafts: dict[int, dict] = {}
@@ -125,6 +125,12 @@ class DraftView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=3600)
         self.user_id = user_id
+    
+    async def on_timeout(self):
+        """
+        Auto clean-up draft on timeout to avoid memory leaks and user lockout
+        """
+        drafts.pop(self.user_id, None)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
