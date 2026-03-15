@@ -67,7 +67,7 @@ class MaterialsModal(discord.ui.Modal, title="Change Order - Materials"):
             error_msg = "\n".join(f"• `{e}`" for e in parse_errors)
             await interaction.response.send_message(
                 f"⚠️ Some material lines couldn't be parsed (expected `Name - Quantity`):\n{error_msg}\n\n"
-                "Please run `/change-order` again and use the format `Name - Quantity` on each line.",
+                "Please run `/changeorder` again and use the format `Name - Quantity` on each line.",
                 ephemeral=True,
             )
             return
@@ -115,7 +115,7 @@ class ChangeOrder(commands.Cog):
         self.bot = bot
 
     @app_commands.command(
-        name="change-order",
+        name="changeorder",
         description="Submit a new change order",
     )
     async def change_order(self, interaction: discord.Interaction):

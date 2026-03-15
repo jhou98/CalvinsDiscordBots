@@ -2,7 +2,7 @@
 change_order_multistep.py
 
 Multi-step change order flow:
-1. /change-order-pro  →  Modal: Date + Scope
+1. /changeorderpro  →  Modal: Date + Scope
 2. Bot posts a live "draft" embed + "Add Material" / "Done" buttons
 3. "Add Material" opens a small modal: Item Name + Quantity
 4. Each submission updates the live draft embed
@@ -82,7 +82,7 @@ def build_final_embed(user: discord.User | discord.Member, draft: dict) -> disco
 
 
 # ---------------------------------------------------------------------------
-# Modal 1: Date + Scope  (opens on /change-order-pro)
+# Modal 1: Date + Scope  (opens on /changeorderpro)
 # ---------------------------------------------------------------------------
 class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
     date_requested = discord.ui.TextInput(
@@ -161,7 +161,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         draft = drafts.get(self.user_id)
         if not draft:
             await interaction.response.send_message(
-                "⚠️ Your draft expired. Please run `/change-order-pro` again.",
+                "⚠️ Your draft expired. Please run `/changeorderpro` again.",
                 ephemeral=True,
             )
             return
@@ -198,7 +198,7 @@ class DraftView(discord.ui.View):
     async def add_material(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id not in drafts:
             await interaction.response.send_message(
-                "⚠️ Draft not found. Please run `/change-order-pro` again.",
+                "⚠️ Draft not found. Please run `/changeorderpro` again.",
                 ephemeral=True,
             )
             return
@@ -268,7 +268,7 @@ class ChangeOrderMultiStep(commands.Cog):
         self.bot = bot
 
     @app_commands.command(
-        name="change-order-pro",
+        name="changeorderpro",
         description="Submit a change order (add materials one at a time with + button)",
     )
     async def change_order_pro(self, interaction: discord.Interaction):

@@ -16,7 +16,7 @@ async def on_ready():
     # await bot.tree.sync(guild=discord.Object(id=436728989651042304))  # instant sync with specific server-id
     print(f"Logged in as {bot.user}")
     print("Commands registered:")
-    print("  /change-order      — single modal, freeform material list")
-    print("  /change-order-pro  — multi-step, add materials one at a time")
+    print("  /changeorder      — single modal, freeform material list")
+    print("  /changeorderpro  — multi-step, add materials one at a time")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
