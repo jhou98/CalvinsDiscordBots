@@ -2,7 +2,7 @@
 
 ## Setup
 1. Setup python and venv 
-2. run `pip install requirements.txt` 
+2. run `pip install -r requirements.txt` 
 3. Run `cp .env_template` `.env` and enter your personal token for DISCORD_TOKEN={}` in the .env (ask Jack if you need the Discord Token)
 4. Run `python main.py` to start the bot locally
 5. Run `pytest` for unit testing
