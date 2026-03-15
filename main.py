@@ -10,8 +10,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.load_extension("cogs.change_order")           # /change-order      (single modal)
-    await bot.load_extension("cogs.change_order_multistep") # /change-order-pro  (multi-step + buttons)
+    await bot.load_extension("cogs.change_order")           # /changeorder      (single modal)
+    await bot.load_extension("cogs.change_order_multistep") # /changeorderpro  (multi-step + buttons)
     await bot.tree.sync()
     # await bot.tree.sync(guild=discord.Object(id=436728989651042304))  # instant sync with specific server-id
     print(f"Logged in as {bot.user}")

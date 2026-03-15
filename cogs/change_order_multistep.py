@@ -1,90 +1,17 @@
-"""
-change_order_multistep.py
-
-Multi-step change order flow:
-1. /changeorderpro  →  Modal: Date + Scope
-2. Bot posts a live "draft" embed + "Add Material" / "Done" buttons
-3. "Add Material" opens a small modal: Item Name + Quantity
-4. Each submission updates the live draft embed
-5. "Done" locks the order and posts the final formatted change order
-6. Workers can also "Cancel" to discard a draft
-
-State is held in memory (a dict keyed by user ID). Fine for MVP — if the
-bot restarts, in-progress drafts are lost, but completed orders are posted
-in the channel as embeds.
-"""
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
+from .utils import resolve_date, discord_timestamp, build_change_order_embed
 
-# ---------------------------------------------------------------------------
-# In-memory draft store  { user_id: { date, scope, materials: [(name, qty)] } }
-# ---------------------------------------------------------------------------
+# In-memory draft store  { user_id: { date, submitted_at, scope, materials } }
 drafts: dict[int, dict] = {}
 
 
 # ---------------------------------------------------------------------------
-# Helper: build the live draft embed
-# ---------------------------------------------------------------------------
-def build_draft_embed(user: discord.User | discord.Member, draft: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title="📋 Change Order Draft",
-        color=discord.Color.blue(),
-        timestamp=datetime.utcnow(),
-    )
-    embed.add_field(name="📅 Date Requested", value=draft["date"], inline=True)
-    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
-    embed.add_field(name="🔧 Scope Added", value=draft["scope"], inline=False)
-
-    materials = draft["materials"]
-    if materials:
-        mat_text = "\n".join(f"`{name}` — **{qty}**" for name, qty in materials)
-    else:
-        mat_text = "_No materials added yet. Use **Add Material** below._"
-
-    embed.add_field(
-        name=f"📦 Materials ({len(materials)} item{'s' if len(materials) != 1 else ''})",
-        value=mat_text,
-        inline=False,
-    )
-    embed.set_footer(text="Change Order Draft  •  Use the buttons below to add materials or finish")
-    return embed
-
-
-# ---------------------------------------------------------------------------
-# Helper: build the final (locked) embed
-# ---------------------------------------------------------------------------
-def build_final_embed(user: discord.User | discord.Member, draft: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title="✅ Change Order — Submitted",
-        color=discord.Color.green(),
-        timestamp=datetime.utcnow(),
-    )
-    embed.add_field(name="📅 Date Requested", value=draft["date"], inline=True)
-    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
-    embed.add_field(name="🔧 Scope Added", value=draft["scope"], inline=False)
-
-    materials = draft["materials"]
-    if materials:
-        mat_text = "\n".join(f"`{name}` — **{qty}**" for name, qty in materials)
-    else:
-        mat_text = "_No materials listed._"
-
-    embed.add_field(
-        name=f"📦 Materials ({len(materials)} item{'s' if len(materials) != 1 else ''})",
-        value=mat_text,
-        inline=False,
-    )
-    embed.set_footer(text="Change Order System  •  Submitted")
-    return embed
-
-
-# ---------------------------------------------------------------------------
-# Modal 1: Date + Scope  (opens on /changeorderpro)
+# Modal 1: Date + Scope
 # ---------------------------------------------------------------------------
 class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
+
     date_requested = discord.ui.TextInput(
         label="Date Requested",
         placeholder="MM/DD/YYYY  (leave blank for today)",
@@ -100,32 +27,26 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        raw_date = self.date_requested.value.strip()
-        date_str = raw_date if raw_date else datetime.today().strftime("%m/%d/%Y")
-
-        # Store draft in memory
         drafts[interaction.user.id] = {
-            "date": date_str,
+            "date": resolve_date(self.date_requested.value),
+            "submitted_at": discord_timestamp(),
             "scope": self.scope_added.value.strip(),
             "materials": [],
         }
-
         draft = drafts[interaction.user.id]
-        embed = build_draft_embed(interaction.user, draft)
-        view = DraftView(interaction.user.id)
-
+        embed = _draft_embed(interaction.user, draft)
         await interaction.response.send_message(
             content="Draft created! Add materials below, then click **Done** when finished.",
             embed=embed,
-            view=view,
-            ephemeral=False,   # visible to the channel so supervisors can watch
+            view=DraftView(interaction.user.id),
         )
 
 
 # ---------------------------------------------------------------------------
-# Modal 2: Single material entry  (opens on "Add Material" button)
+# Modal 2: Single material entry
 # ---------------------------------------------------------------------------
 class AddMaterialModal(discord.ui.Modal, title="Add Material"):
+
     item_name = discord.ui.TextInput(
         label="Item Name",
         placeholder="e.g.  20A Breaker",
@@ -142,15 +63,12 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
     def __init__(self, user_id: int, message: discord.Message):
         super().__init__()
         self.user_id = user_id
-        self.message = message  # reference to the draft message so we can edit it
+        self.message = message
 
     async def on_submit(self, interaction: discord.Interaction):
-        name = self.item_name.value.strip()
         qty = self.quantity.value.strip()
-
-        # Validate quantity is numeric
         try:
-            float(qty)  # allow decimals like 1.5 boxes
+            float(qty)
         except ValueError:
             await interaction.response.send_message(
                 f"⚠️ Quantity must be a number (you entered `{qty}`). Please try again.",
@@ -166,14 +84,38 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
             )
             return
 
-        draft["materials"].append((name, qty))
-
-        # Update the live embed in place
-        embed = build_draft_embed(interaction.user, draft)
-        view = DraftView(self.user_id)
-
+        draft["materials"].append((self.item_name.value.strip(), qty))
         await interaction.response.defer()
-        await self.message.edit(embed=embed, view=view)
+        await self.message.edit(
+            embed=_draft_embed(interaction.user, draft),
+            view=DraftView(self.user_id),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Shared embed builders (thin wrappers around the shared util)
+# ---------------------------------------------------------------------------
+def _draft_embed(user, draft):
+    return build_change_order_embed(
+        user=user,
+        date=draft["date"],
+        submitted_at=draft["submitted_at"],
+        scope=draft["scope"],
+        material_list=draft["materials"],
+        title="📋 Change Order Draft",
+        color=discord.Color.blue(),
+    )
+
+def _final_embed(user, draft):
+    return build_change_order_embed(
+        user=user,
+        date=draft["date"],
+        submitted_at=draft["submitted_at"],
+        scope=draft["scope"],
+        material_list=draft["materials"],
+        title="✅ Change Order — Submitted",
+        color=discord.Color.green(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +123,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
 # ---------------------------------------------------------------------------
 class DraftView(discord.ui.View):
     def __init__(self, user_id: int):
-        super().__init__(timeout=3600)  # 1 hour timeout
+        super().__init__(timeout=3600)
         self.user_id = user_id
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """Only the original submitter can use these buttons."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "⚠️ Only the person who started this change order can modify it.",
@@ -198,66 +139,48 @@ class DraftView(discord.ui.View):
     async def add_material(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id not in drafts:
             await interaction.response.send_message(
-                "⚠️ Draft not found. Please run `/changeorderpro` again.",
-                ephemeral=True,
+                "⚠️ Draft not found. Please run `/changeorderpro` again.", ephemeral=True
             )
             return
-        modal = AddMaterialModal(user_id=interaction.user.id, message=interaction.message)
-        await interaction.response.send_modal(modal)
+        await interaction.response.send_modal(
+            AddMaterialModal(user_id=interaction.user.id, message=interaction.message)
+        )
 
     @discord.ui.button(label="↩️ Undo Last", style=discord.ButtonStyle.secondary)
     async def undo_last(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.get(interaction.user.id)
         if not draft or not draft["materials"]:
-            await interaction.response.send_message(
-                "Nothing to undo.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Nothing to undo.", ephemeral=True)
             return
-
-        removed = draft["materials"].pop()
-        embed = build_draft_embed(interaction.user, draft)
-        view = DraftView(interaction.user.id)
-
+        draft["materials"].pop()
         await interaction.response.defer()
-        await interaction.message.edit(embed=embed, view=view)
+        await interaction.message.edit(
+            embed=_draft_embed(interaction.user, draft),
+            view=DraftView(self.user_id),
+        )
 
     @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.success)
     async def done(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.pop(interaction.user.id, None)
         if not draft:
-            await interaction.response.send_message(
-                "⚠️ Draft not found.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
             return
-
-        embed = build_final_embed(interaction.user, draft)
-
-        # Disable all buttons on the draft message
         for child in self.children:
             child.disabled = True
-
         await interaction.response.defer()
         await interaction.message.edit(
             content="✅ Change order submitted!",
-            embed=embed,
+            embed=_final_embed(interaction.user, draft),
             view=self,
         )
 
     @discord.ui.button(label="🗑️ Cancel", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         drafts.pop(interaction.user.id, None)
-
         for child in self.children:
             child.disabled = True
-
         await interaction.response.defer()
-        await interaction.message.edit(
-            content="🗑️ Change order cancelled.",
-            embed=None,
-            view=self,
-        )
+        await interaction.message.edit(content="🗑️ Change order cancelled.", embed=None, view=self)
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +195,9 @@ class ChangeOrderMultiStep(commands.Cog):
         description="Submit a change order (add materials one at a time with + button)",
     )
     async def change_order_pro(self, interaction: discord.Interaction):
-        # If user already has an in-progress draft, warn them
         if interaction.user.id in drafts:
             await interaction.response.send_message(
-                "⚠️ You already have a change order in progress. "
-                "Finish or cancel it before starting a new one.",
+                "⚠️ You already have a change order in progress. Finish or cancel it before starting a new one.",
                 ephemeral=True,
             )
             return
