@@ -1,7 +1,10 @@
 import discord
+import logging
 from discord import app_commands
 from discord.ext import commands
 from src.helpers.helpers import resolve_date, discord_timestamp, parse_materials, build_change_order_embed
+
+log = logging.getLogger(__name__)
 
 class MaterialsModal(discord.ui.Modal, title="Change Order"):
 
@@ -30,6 +33,10 @@ class MaterialsModal(discord.ui.Modal, title="Change Order"):
         material_list, parse_errors = parse_materials(self.materials.value)
 
         if parse_errors:
+            log.warning(
+                "Parse errors for user %s (%d): %s",
+                interaction.user, interaction.user.id, parse_errors
+            )
             error_msg = "\n".join(f"• `{e}`" for e in parse_errors)
             await interaction.response.send_message(
                 f"⚠️ Some material lines couldn't be parsed (expected `Name - Quantity`):\n{error_msg}\n\n"
@@ -41,6 +48,10 @@ class MaterialsModal(discord.ui.Modal, title="Change Order"):
         try:
             date = resolve_date(self.date_requested.value)
         except ValueError as e:
+            log.warning(
+                "Date error for user %s, (%d): %s",
+                interaction.user, interaction.user.id, e
+            )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
 
@@ -61,6 +72,7 @@ class ChangeOrder(commands.Cog):
 
     @app_commands.command(name="changeorder", description="Submit a new change order")
     async def change_order(self, interaction: discord.Interaction):
+        log.info("/changeorder called by %s (%d)", interaction.user, interaction.user.id)
         await interaction.response.send_modal(MaterialsModal())
 
 

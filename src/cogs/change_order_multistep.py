@@ -1,10 +1,12 @@
 import discord
+import logging
 from discord import app_commands
 from discord.ext import commands
 from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed
 
 # In-memory draft store  { user_id: { date, submitted_at, scope, materials } }
 drafts: dict[int, dict] = {}
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Modal 1: Date + Scope
@@ -29,6 +31,10 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         try:
             date = resolve_date(self.date_requested.value)
         except ValueError as e:
+            log.warning(
+                "Date error for user %s, (%d): %s",
+                interaction.user, interaction.user.id, e
+            )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
         
@@ -79,6 +85,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         try:
             float(qty)
         except ValueError:
+            log.warning(
+                "Invalid quantity '%s' entered by %s (%d)",
+                qty, interaction.user, interaction.user.id
+            )
             await interaction.response.send_message(
                 f"⚠️ Quantity must be a number (you entered `{qty}`). Please try again.",
                 ephemeral=True,
@@ -87,6 +97,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
 
         draft = drafts.get(self.user_id)
         if not draft:
+            log.warning(
+                "Draft not found for user %s (%d) on material add", 
+                interaction.user, interaction.user.id
+            )
             await interaction.response.send_message(
                 "⚠️ Your draft expired. Please run `/changeorderpro` again.",
                 ephemeral=True,
