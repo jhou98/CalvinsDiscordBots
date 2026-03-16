@@ -1,6 +1,0 @@
-2026-03-15 20:33:59,612 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
-2026-03-15 20:33:59,614 [WARNING] discord.ext.commands.bot: Privileged message content intent is missing, commands may not work as expected.
-2026-03-15 20:33:59,614 [INFO] discord.client: logging in using static token
-2026-03-15 20:34:00,635 [INFO] discord.gateway: Shard ID None has connected to Gateway (Session ID: 221cc05aaafc90c56dfb7c300932b002).
-2026-03-15 20:34:02,638 [INFO] __main__: Bot ready — logged in as CalvinBot_V0.1#6173
-2026-03-15 20:34:02,638 [INFO] __main__: Commands synced: /changeorder, /changeorderpro
