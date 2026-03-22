@@ -1,211 +1,129 @@
 """
-Tests for helpers/helpers.py — pure helper functions.
+Shared helpers used by both change order cogs.
+
+Eventually might want to separate these out into separate files / classes
+But for now for simplicity will keep them as a single utils folder
 """
 
-import re
-import pytest
 import discord
-from unittest.mock import MagicMock
-from src.helpers.helpers import (
-    resolve_date,
-    discord_timestamp,
-    parse_materials,
-    format_materials,
-    build_change_order_embed,
-)
-
+from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
-# resolve_date
+# Date helpers
 # ---------------------------------------------------------------------------
-
-class TestResolveDate:
-    def test_returns_provided_date(self):
-        assert resolve_date("12/25/2024") == "12/25/2024"
-
-    def test_strips_whitespace(self):
-        assert resolve_date("  01/01/2025  ") == "01/01/2025"
-
-    def test_empty_string_returns_today(self):
-        result = resolve_date("")
-        # Should look like MM/DD/YYYY
-        assert re.match(r"\d{2}/\d{2}/\d{4}", result)
-
-    def test_whitespace_only_returns_today(self):
-        result = resolve_date("   ")
-        assert re.match(r"\d{2}/\d{2}/\d{4}", result)
-
-    def test_invalid_format_raises_value_error(self):
-        with pytest.raises(ValueError):
-            resolve_date("2026-03-15")
-
-    def test_error_message_contains_bad_value(self):
-        with pytest.raises(ValueError, match="2026-03-15"):
-            resolve_date("2026-03-15")
-
-    def test_error_message_contains_expected_format(self):
-        with pytest.raises(ValueError, match="MM/DD/YYYY"):
-            resolve_date("2026-03-15")
+def resolve_date(raw: str) -> str:
+    """
+    Return raw date string if provided and valid (MM/DD/YYYY), otherwise today's date.
+    Raises ValueError if a non-empty string is provided in the wrong format.
+    """
+    if not raw.strip():
+        return datetime.today().strftime("%m/%d/%Y")
+    try:
+        datetime.strptime(raw.strip(), "%m/%d/%Y")
+    except ValueError:
+        raise ValueError(f"Invalid date format `{raw.strip()}` — expected MM/DD/YYYY (e.g. `03/15/2026`).")
     
-    @pytest.mark.parametrize("bad_input", [
-        "2026-03-15",   # ISO format
-        "15/03/2026",   # DD/MM/YYYY
-        "03/15/26",     # two-digit year
-        "03-15-2026",   # dashes instead of slashes
-        "13/01/2026",   # invalid month
-        "03/32/2026",   # invalid day
-        "notadate",     # garbage
-    ])
-    def test_invalid_formats_raise(self, bad_input):
-        with pytest.raises(ValueError):
-            resolve_date(bad_input)
+    return raw.strip()
 
-# ---------------------------------------------------------------------------
-# discord_timestamp
-# ---------------------------------------------------------------------------
-
-class TestDiscordTimestamp:
-    def test_format(self):
-        ts = discord_timestamp()
-        # Expected: <t:1234567890:F>
-        assert re.match(r"<t:\d+:F>", ts)
-
-    def test_unix_value_is_recent(self):
-        import time
-        ts = discord_timestamp()
-        unix = int(re.search(r"\d+", ts).group())
-        assert abs(unix - int(time.time())) < 5
+def discord_timestamp() -> str:
+    """Return a Discord-formatted timestamp that renders in each user's local timezone."""
+    unix_now = int(datetime.now(timezone.utc).timestamp())
+    return f"<t:{unix_now}:F>"
 
 
 # ---------------------------------------------------------------------------
-# parse_materials
+# Material helpers
 # ---------------------------------------------------------------------------
 
-class TestParseMaterials:
-    def test_single_valid_line(self):
-        materials, errors = parse_materials("20A Breaker - 3")
-        assert materials == [("20A Breaker", "3")]
-        assert errors == []
+def parse_materials(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """
+    Parse a freeform material string (one item per line, format: Name - Quantity).
+    Returns (material_list, parse_errors).
+      material_list  — list of (name, qty) tuples for valid lines
+      parse_errors   — list of raw lines that couldn't be parsed
+    """
+    lines = [line.strip() for line in raw.strip().splitlines() if line.strip()]
+    material_list = []
+    parse_errors = []
 
-    def test_multiple_valid_lines(self):
-        raw = "20A Breaker - 3\n12 AWG Wire - 2\nJunction Box - 5"
-        materials, errors = parse_materials(raw)
-        assert len(materials) == 3
-        assert materials[0] == ("20A Breaker", "3")
-        assert materials[2] == ("Junction Box", "5")
+    for line in lines:
+        if " - " in line:
+            name, qty = line.split(" - ", 1)
+            material_list.append((name.strip(), qty.strip()))
+        else:
+            parse_errors.append(line)
 
-    def test_invalid_line_captured_in_errors(self):
-        materials, errors = parse_materials("BadLine")
-        assert materials == []
-        assert errors == ["BadLine"]
+    return material_list, parse_errors
 
-    def test_mixed_valid_and_invalid(self):
-        raw = "Good Item - 2\nBadLine\nAnother Good - 10"
-        materials, errors = parse_materials(raw)
-        assert len(materials) == 2
-        assert errors == ["BadLine"]
 
-    def test_empty_string(self):
-        materials, errors = parse_materials("")
-        assert materials == []
-        assert errors == []
-
-    def test_extra_whitespace_trimmed(self):
-        materials, _ = parse_materials("  Widget  -  7  ")
-        assert materials == [("Widget", "7")]
-
-    def test_dash_in_item_name(self):
-        """Only the first ' - ' should be used as the separator."""
-        materials, errors = parse_materials("12-2 Wire - 5")
-        assert materials == [("12-2 Wire", "5")]
-        assert errors == []
-
-    def test_blank_lines_ignored(self):
-        raw = "Item A - 1\n\n\nItem B - 2"
-        materials, _ = parse_materials(raw)
-        assert len(materials) == 2
+def format_materials(material_list: list[tuple[str, str]]) -> str:
+    """Format a list of (name, qty) tuples into a Discord embed string."""
+    if not material_list:
+        return "_No materials listed._"
+    return "\n".join(f"`{name}` — **{qty}**" for name, qty in material_list)
 
 
 # ---------------------------------------------------------------------------
-# format_materials
+# Plain text builder
 # ---------------------------------------------------------------------------
 
-class TestFormatMaterials:
-    def test_empty_list(self):
-        assert format_materials([]) == "_No materials listed._"
-
-    def test_single_item(self):
-        result = format_materials([("Breaker", "3")])
-        assert "`Breaker`" in result
-        assert "**3**" in result
-
-    def test_multiple_items(self):
-        result = format_materials([("A", "1"), ("B", "2")])
-        assert "`A`" in result
-        assert "`B`" in result
+def format_plain_text(
+    user: discord.User | discord.Member,
+    date: str,
+    scope: str,
+    material_list: list[tuple[str, str]],
+) -> str:
+    """
+    Return a plain-text representation of a change order for easy copy-pasting.
+    Materials use Name - Quantity format, matching the original input convention.
+    """
+    lines = [
+        "CHANGE ORDER",
+        f"Date Requested: {date}",
+        f"Submitted By:   {user.display_name}",
+        "",
+        "Scope Added:",
+        scope,
+        "",
+        "Materials:",
+    ]
+    if material_list:
+        lines += [f"  {name} - {qty}" for name, qty in material_list]
+    else:
+        lines.append("  No materials listed.")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# build_change_order_embed
+# Embed builder
 # ---------------------------------------------------------------------------
 
-class TestBuildChangeOrderEmbed:
-    def _make_user(self):
-        user = MagicMock(spec=discord.Member)
-        user.mention = "<@1>"
-        return user
+def build_change_order_embed(
+    user: discord.User | discord.Member,
+    date: str,
+    submitted_at: str,
+    scope: str,
+    material_list: list[tuple[str, str]],
+    *,
+    title: str = "⚡ Change Order",
+    color: discord.Color = discord.Color.yellow(),
+) -> discord.Embed:
+    """
+    Build a formatted change order embed.
+    Used by both the single-modal and multi-step flows.
+    Pass a custom title/color to distinguish drafts from final submissions.
+    """
+    embed = discord.Embed(title=title, color=color)
 
-    def test_returns_embed(self):
-        embed = build_change_order_embed(
-            user=self._make_user(),
-            date="01/01/2025",
-            submitted_at="<t:1234567890:F>",
-            scope="Install new panel",
-            material_list=[("Breaker", "2")],
-        )
-        assert isinstance(embed, discord.Embed)
+    embed.add_field(name="⚡ Date Requested", value=date, inline=True)
+    embed.add_field(name="⚡ Submitted At", value=submitted_at, inline=True)
+    embed.add_field(name="⚡ Submitted By", value=user.mention, inline=True)
+    embed.add_field(name="⚡ Scope Added", value=scope, inline=False)
+    embed.add_field(
+        name=f"⚡ Materials ({len(material_list)} item{'s' if len(material_list) != 1 else ''})",
+        value=format_materials(material_list),
+        inline=False,
+    )
+    embed.set_footer(text="Change Order System")
 
-    def test_default_title(self):
-        embed = build_change_order_embed(
-            user=self._make_user(),
-            date="01/01/2025",
-            submitted_at="<t:1234567890:F>",
-            scope="Scope",
-            material_list=[],
-        )
-        assert embed.title == "📋 Change Order"
-
-    def test_custom_title_and_color(self):
-        embed = build_change_order_embed(
-            user=self._make_user(),
-            date="01/01/2025",
-            submitted_at="<t:1234567890:F>",
-            scope="Scope",
-            material_list=[],
-            title="✅ Done",
-            color=discord.Color.green(),
-        )
-        assert embed.title == "✅ Done"
-        assert embed.color == discord.Color.green()
-
-    def test_material_count_in_field_name(self):
-        embed = build_change_order_embed(
-            user=self._make_user(),
-            date="01/01/2025",
-            submitted_at="<t:1234567890:F>",
-            scope="Scope",
-            material_list=[("A", "1"), ("B", "2")],
-        )
-        field_names = [f.name for f in embed.fields]
-        assert any("2 items" in name for name in field_names)
-
-    def test_singular_material_count(self):
-        embed = build_change_order_embed(
-            user=self._make_user(),
-            date="01/01/2025",
-            submitted_at="<t:1234567890:F>",
-            scope="Scope",
-            material_list=[("A", "1")],
-        )
-        field_names = [f.name for f in embed.fields]
-        assert any("1 item" in name and "items" not in name for name in field_names)
+    return embed

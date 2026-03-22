@@ -32,7 +32,6 @@ class CalvinBot(commands.Bot):
     async def setup_hook(self):
         try: 
             await self.load_extension("src.cogs.change_order")
-            await self.load_extension("src.cogs.change_order_multistep")
             await self.tree.sync()
             log.info("-- Setup hook complete --")
         except Exception: 
@@ -44,6 +43,6 @@ bot = CalvinBot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     log.info("Bot ready — logged in as %s", bot.user)
-    log.info("Commands synced: /changeorder, /changeorderpro")
+    log.info("Commands synced: /changeorder")
 
 bot.run(os.getenv("DISCORD_TOKEN"))

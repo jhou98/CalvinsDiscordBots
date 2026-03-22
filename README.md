@@ -11,8 +11,7 @@
 ```
 ├── src/
 │   └── cogs/
-│       ├── change_order.py           # /changeorder (single modal)
-│       └── change_order_multistep.py # /changeorderpro (multi-step + buttons)
+│       └── change_order.py           # /changeorder 
 │   └── helpers/
 │       └── helpers.py                # Shared utilities
 │   └── models/

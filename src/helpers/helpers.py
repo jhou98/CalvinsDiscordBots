@@ -64,6 +64,37 @@ def format_materials(material_list: list[tuple[str, str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Plain text builder
+# ---------------------------------------------------------------------------
+
+def format_plain_text(
+    user: discord.User | discord.Member,
+    date: str,
+    scope: str,
+    material_list: list[tuple[str, str]],
+) -> str:
+    """
+    Return a plain-text representation of a change order for easy copy-pasting.
+    Materials use Name - Quantity format, matching the original input convention.
+    """
+    lines = [
+        "CHANGE ORDER",
+        f"Date Requested: {date}",
+        f"Submitted By:   {user.display_name}",
+        "",
+        "Scope Added:",
+        scope,
+        "",
+        "Materials:",
+    ]
+    if material_list:
+        lines += [f"  {name} - {qty}" for name, qty in material_list]
+    else:
+        lines.append("  No materials listed.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Embed builder
 # ---------------------------------------------------------------------------
 
