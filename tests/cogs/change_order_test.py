@@ -1,21 +1,23 @@
 """
 Tests for cogs/change_order.py — the /changeorder command (multi-step flow).
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone, timedelta
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
+
 import discord
+
 from src.cogs.change_order import (
-    ScopeModal,
-    AddMaterialModal,
-    DraftView,
-    SubmittedView,
-    ChangeOrder,
-    drafts,
-    _draft_key,
-    _is_expired,
-    _evict,
     DRAFT_TTL_SECONDS,
+    AddMaterialModal,
+    ChangeOrder,
+    DraftView,
+    ScopeModal,
+    SubmittedView,
+    _draft_key,
+    _evict,
+    _is_expired,
+    drafts,
 )
 from src.models.draft_change_order import DraftChangeOrder
 
@@ -33,7 +35,7 @@ def _seed_draft(draft_key: tuple[int, int, int] = _TEST_KEY, *, expired: bool = 
         date="01/01/2025",
         submitted_at="<t:1234567890:F>",
         scope="Install panel",
-        created_at=datetime.now(timezone.utc) - age,
+        created_at=datetime.now(UTC) - age,
     )
     return drafts[draft_key]
 
@@ -67,6 +69,7 @@ def _make_interaction(user_id=123456789, guild_id=111, channel_id=222):
 # _is_expired
 # ---------------------------------------------------------------------------
 
+
 class TestIsExpired:
     def test_fresh_draft_not_expired(self):
         draft = _seed_draft()
@@ -80,6 +83,7 @@ class TestIsExpired:
 # ---------------------------------------------------------------------------
 # _evict
 # ---------------------------------------------------------------------------
+
 
 class TestEvict:
     def setup_method(self):
@@ -121,6 +125,7 @@ class TestEvict:
 # ScopeModal
 # ---------------------------------------------------------------------------
 
+
 class TestScopeModal:
     def setup_method(self):
         _clear_drafts()
@@ -156,7 +161,7 @@ class TestScopeModal:
     async def test_draft_created_at_is_recent(self, mock_interaction):
         await self._make_modal().on_submit(mock_interaction)
         draft = drafts[_draft_key(mock_interaction)]
-        age = (datetime.now(timezone.utc) - draft.created_at).total_seconds()
+        age = (datetime.now(UTC) - draft.created_at).total_seconds()
         assert age < 5
 
     async def test_sends_message_with_embed_and_view(self, mock_interaction):
@@ -184,6 +189,7 @@ class TestScopeModal:
 # AddMaterialModal
 # ---------------------------------------------------------------------------
 
+
 class TestAddMaterialModal:
     def setup_method(self):
         _clear_drafts()
@@ -201,17 +207,23 @@ class TestAddMaterialModal:
 
     async def test_non_numeric_quantity_sends_ephemeral_error(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(
+            mock_interaction
+        )
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_non_numeric_quantity_does_not_add_to_draft(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(
+            mock_interaction
+        )
         assert drafts[_TEST_KEY].materials == []
 
     async def test_missing_separator_sends_ephemeral_error(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, materials_text="BadLine").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="BadLine").on_submit(
+            mock_interaction
+        )
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_missing_draft_sends_ephemeral_error(self, mock_interaction, mock_message):
@@ -225,7 +237,9 @@ class TestAddMaterialModal:
 
     async def test_decimal_quantity_accepted(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - 2.5").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - 2.5").on_submit(
+            mock_interaction
+        )
         assert ("Breaker", "2.5") in drafts[_TEST_KEY].materials
 
     async def test_expired_draft_sends_ephemeral_error(self, mock_interaction, mock_message):
@@ -248,7 +262,9 @@ class TestAddMaterialModal:
     async def test_adds_multiple_materials_in_one_submit(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
         raw = "20A Breaker - 3\n12 AWG Wire - 2\nJunction Box - 5"
-        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(
+            mock_interaction
+        )
         materials = drafts[_TEST_KEY].materials
         assert ("20A Breaker", "3") in materials
         assert ("12 AWG Wire", "2") in materials
@@ -258,31 +274,44 @@ class TestAddMaterialModal:
         _seed_draft(_TEST_KEY)
         drafts[_TEST_KEY].materials = [("Existing Item", "1")]
         raw = "New Item A - 4\nNew Item B - 7"
-        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(
+            mock_interaction
+        )
         assert len(drafts[_TEST_KEY].materials) == 3
         assert ("Existing Item", "1") in drafts[_TEST_KEY].materials
 
-    async def test_mixed_valid_and_invalid_sends_ephemeral_error(self, mock_interaction, mock_message):
+    async def test_mixed_valid_and_invalid_sends_ephemeral_error(
+        self, mock_interaction, mock_message
+    ):
         _seed_draft(_TEST_KEY)
         raw = "Good Item - 2\nBadLine\nAnother Good - 10"
-        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(
+            mock_interaction
+        )
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
-    async def test_mixed_valid_and_invalid_does_not_partially_add(self, mock_interaction, mock_message):
+    async def test_mixed_valid_and_invalid_does_not_partially_add(
+        self, mock_interaction, mock_message
+    ):
         _seed_draft(_TEST_KEY)
         raw = "Good Item - 2\nBadLine"
-        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(
+            mock_interaction
+        )
         assert drafts[_TEST_KEY].materials == []
 
     async def test_dash_in_item_name_parsed_correctly(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, materials_text="12-2 Wire - 5").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="12-2 Wire - 5").on_submit(
+            mock_interaction
+        )
         assert ("12-2 Wire", "5") in drafts[_TEST_KEY].materials
 
 
 # ---------------------------------------------------------------------------
 # DraftView — _check_expired
 # ---------------------------------------------------------------------------
+
 
 class TestDraftViewCheckExpired:
     def setup_method(self):
@@ -318,6 +347,7 @@ class TestDraftViewCheckExpired:
 # DraftView — timeout=None
 # ---------------------------------------------------------------------------
 
+
 async def test_view_has_no_timeout():
     """View timeout must be None — TTL is managed by created_at, not discord.py."""
     view = DraftView(_TEST_KEY)
@@ -327,6 +357,7 @@ async def test_view_has_no_timeout():
 # ---------------------------------------------------------------------------
 # DraftView buttons
 # ---------------------------------------------------------------------------
+
 
 class TestDraftViewUndoLast:
     def setup_method(self):
@@ -379,19 +410,25 @@ class TestDraftViewDone:
         submitted_view = mock_message.edit.call_args.kwargs.get("view")
         assert isinstance(submitted_view, SubmittedView)
 
-    async def test_done_with_no_materials_sends_ephemeral_error(self, mock_interaction, mock_message):
+    async def test_done_with_no_materials_sends_ephemeral_error(
+        self, mock_interaction, mock_message
+    ):
         _seed_draft(_TEST_KEY)
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
-    async def test_done_with_no_materials_does_not_remove_draft(self, mock_interaction, mock_message):
+    async def test_done_with_no_materials_does_not_remove_draft(
+        self, mock_interaction, mock_message
+    ):
         _seed_draft(_TEST_KEY)
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
         assert _TEST_KEY in drafts
 
-    async def test_done_with_no_materials_does_not_edit_message(self, mock_interaction, mock_message):
+    async def test_done_with_no_materials_does_not_edit_message(
+        self, mock_interaction, mock_message
+    ):
         _seed_draft(_TEST_KEY)
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
@@ -432,6 +469,7 @@ class TestDraftViewCancel:
 # DraftView interaction_check
 # ---------------------------------------------------------------------------
 
+
 class TestDraftViewInteractionCheck:
     async def test_wrong_user_blocked(self, mock_interaction):
         wrong_key = (999, 111, 222)
@@ -447,6 +485,7 @@ class TestDraftViewInteractionCheck:
 # ---------------------------------------------------------------------------
 # Background sweep
 # ---------------------------------------------------------------------------
+
 
 class TestSweepExpiredDrafts:
     def setup_method(self):
@@ -491,6 +530,7 @@ class TestSweepExpiredDrafts:
 # Multi-channel isolation
 # ---------------------------------------------------------------------------
 
+
 class TestMultiChannelDraftIsolation:
     def setup_method(self):
         _clear_drafts()
@@ -526,6 +566,7 @@ class TestMultiChannelDraftIsolation:
 # ChangeOrder cog
 # ---------------------------------------------------------------------------
 
+
 class TestChangeOrderCog:
     def setup_method(self):
         _clear_drafts()
@@ -556,6 +597,7 @@ class TestChangeOrderCog:
 # ---------------------------------------------------------------------------
 # SubmittedView
 # ---------------------------------------------------------------------------
+
 
 class TestSubmittedView:
     def setup_method(self):
@@ -596,6 +638,7 @@ class TestSubmittedView:
 # format_plain_text
 # ---------------------------------------------------------------------------
 
+
 class TestFormatPlainText:
     def _make_user(self, name="Jack"):
         user = MagicMock(spec=discord.Member)
@@ -604,26 +647,33 @@ class TestFormatPlainText:
 
     def test_contains_date(self):
         from src.helpers.helpers import format_plain_text
+
         result = format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
         assert "01/01/2025" in result
 
     def test_contains_scope(self):
         from src.helpers.helpers import format_plain_text
+
         result = format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
         assert "Install panel" in result
 
     def test_contains_user_name(self):
         from src.helpers.helpers import format_plain_text
+
         result = format_plain_text(self._make_user("Jack"), "01/01/2025", "Scope", [])
         assert "Jack" in result
 
     def test_materials_formatted_correctly(self):
         from src.helpers.helpers import format_plain_text
-        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [("Breaker", "3"), ("Wire", "2")])
+
+        result = format_plain_text(
+            self._make_user(), "01/01/2025", "Scope", [("Breaker", "3"), ("Wire", "2")]
+        )
         assert "Breaker - 3" in result
         assert "Wire - 2" in result
 
     def test_empty_materials_fallback(self):
         from src.helpers.helpers import format_plain_text
+
         result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [])
         assert "No materials listed" in result

@@ -5,8 +5,10 @@ Eventually might want to separate these out into separate files / classes
 But for now for simplicity will keep them as a single utils folder
 """
 
+from datetime import UTC, datetime
+
 import discord
-from datetime import datetime, timezone
+
 
 # ---------------------------------------------------------------------------
 # Date helpers
@@ -20,20 +22,24 @@ def resolve_date(raw: str) -> str:
         return datetime.today().strftime("%m/%d/%Y")
     try:
         datetime.strptime(raw.strip(), "%m/%d/%Y")
-    except ValueError:
-        raise ValueError(f"Invalid date format `{raw.strip()}` — expected MM/DD/YYYY (e.g. `03/15/2026`).")
-    
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid date format `{raw.strip()}` — expected MM/DD/YYYY (e.g. `03/15/2026`)."
+        ) from e
+
     return raw.strip()
+
 
 def discord_timestamp() -> str:
     """Return a Discord-formatted timestamp that renders in each user's local timezone."""
-    unix_now = int(datetime.now(timezone.utc).timestamp())
+    unix_now = int(datetime.now(UTC).timestamp())
     return f"<t:{unix_now}:F>"
 
 
 # ---------------------------------------------------------------------------
 # Material helpers
 # ---------------------------------------------------------------------------
+
 
 def parse_materials(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
     """
@@ -67,6 +73,7 @@ def format_materials(material_list: list[tuple[str, str]]) -> str:
 # Plain text builder
 # ---------------------------------------------------------------------------
 
+
 def format_plain_text(
     user: discord.User | discord.Member,
     date: str,
@@ -97,6 +104,8 @@ def format_plain_text(
 # ---------------------------------------------------------------------------
 # Embed builder
 # ---------------------------------------------------------------------------
+_DEFAULT_EMBED_COLOR = discord.Color.yellow()
+
 
 def build_change_order_embed(
     user: discord.User | discord.Member,
@@ -106,7 +115,7 @@ def build_change_order_embed(
     material_list: list[tuple[str, str]],
     *,
     title: str = "📋 Change Order",
-    color: discord.Color = discord.Color.yellow(),
+    color: discord.Color = _DEFAULT_EMBED_COLOR,
 ) -> discord.Embed:
     """
     Build a formatted change order embed.

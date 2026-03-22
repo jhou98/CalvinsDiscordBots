@@ -2,9 +2,12 @@
 Shared fixtures for Discord bot tests.
 Provides mock Discord objects so tests run without a live bot.
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
+
 import discord
+import pytest
+
 
 @pytest.fixture
 def mock_user():
@@ -14,12 +17,14 @@ def mock_user():
     user.mention = "<@123456789>"
     return user
 
+
 @pytest.fixture
 def mock_message():
     """A fake discord.Message with an async edit method."""
     message = MagicMock(spec=discord.Message)
     message.edit = AsyncMock()
     return message
+
 
 @pytest.fixture
 def mock_interaction(mock_user, mock_message):

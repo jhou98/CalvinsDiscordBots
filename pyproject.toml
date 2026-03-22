@@ -2,3 +2,25 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (undefined names, unused imports, etc.)
+    "I",   # isort (import ordering)
+    "UP",  # pyupgrade (modern Python syntax)
+    "B",   # flake8-bugbear (common bugs / design issues)
+    "C4",  # flake8-comprehensions (cleaner list/dict/set comprehensions)
+    "SIM", # flake8-simplify (simplifiable code patterns)
+]
+ignore = [
+    "E501",  # line too long — handled by formatter, not linter
+]
+ 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["SIM"] # less strict in tests

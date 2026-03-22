@@ -1,26 +1,33 @@
-import discord
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+
+from src.helpers.helpers import (
+    build_change_order_embed,
+    discord_timestamp,
+    format_plain_text,
+    parse_materials,
+    resolve_date,
+)
 from src.models.draft_change_order import DraftChangeOrder
-from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed, format_plain_text, parse_materials
 
 # In-memory draft store  { (user_id, guild_id, channel_id): DraftChangeOrder }
 drafts: dict[tuple[int, int, int], DraftChangeOrder] = {}
 log = logging.getLogger(__name__)
 
 DRAFT_TTL_SECONDS = 86400  # 1 day
-SWEEP_INTERVAL_HOURS = 6   # how often the background task evicts stale drafts
+SWEEP_INTERVAL_HOURS = 6  # how often the background task evicts stale drafts
 
 
 # ---------------------------------------------------------------------------
 # Expiry helpers
 # ---------------------------------------------------------------------------
-
 def _is_expired(draft: DraftChangeOrder) -> bool:
     """Return True if the draft has exceeded its TTL."""
-    age = (datetime.now(timezone.utc) - draft.created_at).total_seconds()
+    age = (datetime.now(UTC) - draft.created_at).total_seconds()
     return age > DRAFT_TTL_SECONDS
 
 
@@ -31,7 +38,7 @@ async def _evict(draft_key: tuple[int, int, int]) -> None:
     """
     draft = drafts.pop(draft_key, None)
     if draft and draft.message:
-        try:
+        try:  # noqa: SIM105
             await draft.message.edit(
                 content="⏱️ Change order expired due to inactivity.",
                 embed=None,
@@ -45,6 +52,7 @@ async def _evict(draft_key: tuple[int, int, int]) -> None:
 # Key helper
 # ---------------------------------------------------------------------------
 
+
 def _draft_key(interaction: discord.Interaction) -> tuple[int, int, int]:
     """Unique draft key scoped to (user, guild, channel)."""
     return (interaction.user.id, interaction.guild_id, interaction.channel_id)
@@ -54,7 +62,6 @@ def _draft_key(interaction: discord.Interaction) -> tuple[int, int, int]:
 # Modal 1: Date + Scope
 # ---------------------------------------------------------------------------
 class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
-
     date_requested = discord.ui.TextInput(
         label="Date Requested",
         placeholder="MM/DD/YYYY  (leave blank for today)",
@@ -75,7 +82,9 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         except ValueError as e:
             log.warning(
                 "Date error for user %s (%d): %s",
-                interaction.user, interaction.user.id, e,
+                interaction.user,
+                interaction.user.id,
+                e,
             )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
@@ -106,7 +115,6 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
 # Modal 2: Multi-line material entry
 # ---------------------------------------------------------------------------
 class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
-
     materials_input = discord.ui.TextInput(
         label="Materials  (Name - Quantity, one per line)",
         placeholder="20A Breaker - 3\n12 AWG Wire (250ft) - 2\nJunction Box - 5",
@@ -142,11 +150,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
 
         material_list, parse_errors = parse_materials(self.materials_input.value)
 
-        non_numeric = [
-            f"`{name} - {qty}`"
-            for name, qty in material_list
-            if not _is_numeric(qty)
-        ]
+        non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)]
 
         if parse_errors or non_numeric:
             error_lines = []
@@ -157,12 +161,14 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
                 )
             if non_numeric:
                 error_lines.append(
-                    "**Non-numeric quantity:**\n"
-                    + "\n".join(f"• {e}" for e in non_numeric)
+                    "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
                 )
             log.warning(
                 "Material parse/validation errors for %s (%d): parse=%s non_numeric=%s",
-                interaction.user, interaction.user.id, parse_errors, non_numeric,
+                interaction.user,
+                interaction.user.id,
+                parse_errors,
+                non_numeric,
             )
             await interaction.response.send_message(
                 "⚠️ Some lines couldn't be added:\n\n"
@@ -192,6 +198,7 @@ def _is_numeric(value: str) -> bool:
 # Shared embed builders (thin wrappers around the shared util)
 # ---------------------------------------------------------------------------
 
+
 def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
     return build_change_order_embed(
         user=user,
@@ -220,12 +227,14 @@ def _final_embed(user, draft: DraftChangeOrder) -> discord.Embed:
 # View: shown after a draft is finalised (copy text only, open to anyone)
 # ---------------------------------------------------------------------------
 
+
 class SubmittedView(discord.ui.View):
     """
     Replaces DraftView once a change order is submitted.
     All draft-editing buttons are gone; only Copy Text remains and is open
     to anyone in the channel so teammates can grab the plain-text output.
     """
+
     def __init__(self, plain_text: str):
         super().__init__(timeout=None)
         self.plain_text = plain_text
@@ -241,6 +250,7 @@ class SubmittedView(discord.ui.View):
 # ---------------------------------------------------------------------------
 # View: buttons attached to the draft message
 # ---------------------------------------------------------------------------
+
 
 class DraftView(discord.ui.View):
     def __init__(self, draft_key: tuple[int, int, int]):
@@ -283,7 +293,8 @@ class DraftView(discord.ui.View):
             return
         if self.draft_key not in drafts:
             await interaction.response.send_message(
-                "⚠️ Draft not found. Please run `/changeorderpro` again.", ephemeral=True,
+                "⚠️ Draft not found. Please run `/changeorderpro` again.",
+                ephemeral=True,
             )
             return
         await interaction.response.send_modal(
@@ -348,6 +359,7 @@ class DraftView(discord.ui.View):
 # ---------------------------------------------------------------------------
 # Cog + background sweep
 # ---------------------------------------------------------------------------
+
 
 class ChangeOrder(commands.Cog):
     def __init__(self, bot: commands.Bot):
