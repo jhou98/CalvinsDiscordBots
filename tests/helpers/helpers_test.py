@@ -3,21 +3,24 @@ Tests for helpers/helpers.py — pure helper functions.
 """
 
 import re
-import pytest
-import discord
 from unittest.mock import MagicMock
-from src.helpers.helpers import (
-    resolve_date,
-    discord_timestamp,
-    parse_materials,
-    format_materials,
-    build_change_order_embed,
-)
 
+import discord
+import pytest
+
+from src.helpers.helpers import (
+    build_change_order_embed,
+    discord_timestamp,
+    format_materials,
+    format_plain_text,
+    parse_materials,
+    resolve_date,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_date
 # ---------------------------------------------------------------------------
+
 
 class TestResolveDate:
     def test_returns_provided_date(self):
@@ -46,23 +49,28 @@ class TestResolveDate:
     def test_error_message_contains_expected_format(self):
         with pytest.raises(ValueError, match="MM/DD/YYYY"):
             resolve_date("2026-03-15")
-    
-    @pytest.mark.parametrize("bad_input", [
-        "2026-03-15",   # ISO format
-        "15/03/2026",   # DD/MM/YYYY
-        "03/15/26",     # two-digit year
-        "03-15-2026",   # dashes instead of slashes
-        "13/01/2026",   # invalid month
-        "03/32/2026",   # invalid day
-        "notadate",     # garbage
-    ])
+
+    @pytest.mark.parametrize(
+        "bad_input",
+        [
+            "2026-03-15",  # ISO format
+            "15/03/2026",  # DD/MM/YYYY
+            "03/15/26",  # two-digit year
+            "03-15-2026",  # dashes instead of slashes
+            "13/01/2026",  # invalid month
+            "03/32/2026",  # invalid day
+            "notadate",  # garbage
+        ],
+    )
     def test_invalid_formats_raise(self, bad_input):
         with pytest.raises(ValueError):
             resolve_date(bad_input)
 
+
 # ---------------------------------------------------------------------------
 # discord_timestamp
 # ---------------------------------------------------------------------------
+
 
 class TestDiscordTimestamp:
     def test_format(self):
@@ -72,6 +80,7 @@ class TestDiscordTimestamp:
 
     def test_unix_value_is_recent(self):
         import time
+
         ts = discord_timestamp()
         unix = int(re.search(r"\d+", ts).group())
         assert abs(unix - int(time.time())) < 5
@@ -80,6 +89,7 @@ class TestDiscordTimestamp:
 # ---------------------------------------------------------------------------
 # parse_materials
 # ---------------------------------------------------------------------------
+
 
 class TestParseMaterials:
     def test_single_valid_line(self):
@@ -130,6 +140,7 @@ class TestParseMaterials:
 # format_materials
 # ---------------------------------------------------------------------------
 
+
 class TestFormatMaterials:
     def test_empty_list(self):
         assert format_materials([]) == "_No materials listed._"
@@ -148,6 +159,7 @@ class TestFormatMaterials:
 # ---------------------------------------------------------------------------
 # build_change_order_embed
 # ---------------------------------------------------------------------------
+
 
 class TestBuildChangeOrderEmbed:
     def _make_user(self):
@@ -209,3 +221,36 @@ class TestBuildChangeOrderEmbed:
         )
         field_names = [f.name for f in embed.fields]
         assert any("1 item" in name and "items" not in name for name in field_names)
+
+
+class TestFormatPlainText:
+    def _make_user(self, display_name="Jack"):
+        user = MagicMock(spec=discord.Member)
+        user.display_name = display_name
+        return user
+
+    def test_contains_date(self):
+        result = format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
+        assert "01/01/2025" in result
+
+    def test_contains_display_name(self):
+        result = format_plain_text(self._make_user("Jack"), "01/01/2025", "Install panel", [])
+        assert "Jack" in result
+
+    def test_contains_scope(self):
+        result = format_plain_text(self._make_user(), "01/01/2025", "Run new circuits", [])
+        assert "Run new circuits" in result
+
+    def test_materials_formatted_correctly(self):
+        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [("Breaker", "3")])
+        assert "Breaker - 3" in result
+
+    def test_empty_materials_shows_placeholder(self):
+        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [])
+        assert "No materials listed." in result
+
+    def test_multiple_materials(self):
+        materials = [("Breaker", "3"), ("12 AWG Wire", "2")]
+        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", materials)
+        assert "Breaker - 3" in result
+        assert "12 AWG Wire - 2" in result

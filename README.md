@@ -6,13 +6,13 @@
 3. Add environment variables by first running `cp .env_template` `.env` and enter your personal token for `DISCORD_TOKEN={}` in the .env (ask Jack if you need a Discord Token)
 4. Run `python src/main.py` to start the bot locally
 5. Run `pytest` for unit testing
+6. Run ` ruff format` and `ruff check --fix` for formatting and lint checks 
 
 ## Project Structure
 ```
 ├── src/
 │   └── cogs/
-│       ├── change_order.py           # /changeorder (single modal)
-│       └── change_order_multistep.py # /changeorderpro (multi-step + buttons)
+│       └── change_order.py           # /changeorder 
 │   └── helpers/
 │       └── helpers.py                # Shared utilities
 │   └── models/
@@ -32,5 +32,4 @@ Each subfolder has its own `README.md` which provides an overview and context.
 ## Commands
 | Command | Description |
 |---|---|
-| `/changeorder` | Submit a change order via a single modal |
-| `/changeorderpro` | Submit a change order with multi-step material entry and draft editing |
+| `/changeorder` | Submit a change order with multi-step material entry and draft editing |
