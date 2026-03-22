@@ -15,6 +15,8 @@
 │       └── change_order_multistep.py # /changeorderpro (multi-step + buttons)
 │   └── helpers/
 │       └── helpers.py                # Shared utilities
+│   └── models/
+│       └── draft_change_order.py     # Data model for draft change orders
 |   └── main.py                       # entry point
 ├── tests/
 │   ├── conftest.py                   # Shared pytest fixtures

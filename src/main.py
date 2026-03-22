@@ -21,7 +21,7 @@ logging.basicConfig(
             filename="bot.log",
             when="D",
             interval=1,
-            backupCount=14,  # 14 days
+            backupCount=7,  # 7 days
         ),
     ]
 )

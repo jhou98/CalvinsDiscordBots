@@ -9,8 +9,9 @@ from src.cogs.change_order_multistep import (
     AddMaterialModal,
     DraftView,
     ChangeOrderMultiStep,
-    drafts
+    drafts,
 )
+from src.models.draft_change_order import DraftChangeOrder
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -18,12 +19,11 @@ from src.cogs.change_order_multistep import (
 
 def _seed_draft(user_id: int):
     """Insert a fresh draft directly into the in-memory store."""
-    drafts[user_id] = {
-        "date": "01/01/2025",
-        "submitted_at": "<t:1234567890:F>",
-        "scope": "Install panel",
-        "materials": [],
-    }
+    drafts[user_id] = DraftChangeOrder(
+        date="01/01/2025",
+        submitted_at="<t:1234567890:F>",
+        scope="Install panel",
+    )
 
 def _clear_drafts():
     drafts.clear()
@@ -47,9 +47,17 @@ class TestScopeModal:
         await self._make_modal().on_submit(mock_interaction)
         assert mock_interaction.user.id in drafts
 
+    async def test_draft_is_correct_type(self, mock_interaction):
+        await self._make_modal().on_submit(mock_interaction)
+        assert isinstance(drafts[mock_interaction.user.id], DraftChangeOrder)
+
     async def test_draft_contains_correct_scope(self, mock_interaction):
         await self._make_modal(scope="Run new circuits").on_submit(mock_interaction)
-        assert drafts[mock_interaction.user.id]["scope"] == "Run new circuits"
+        assert drafts[mock_interaction.user.id].scope == "Run new circuits"
+
+    async def test_draft_materials_starts_empty(self, mock_interaction):
+        await self._make_modal().on_submit(mock_interaction)
+        assert drafts[mock_interaction.user.id].materials == []
 
     async def test_sends_message_with_embed_and_view(self, mock_interaction):
         await self._make_modal().on_submit(mock_interaction)
@@ -90,7 +98,7 @@ class TestAddMaterialModal:
     async def test_adds_material_to_draft(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         await self._make_modal(mock_interaction.user.id, mock_message).on_submit(mock_interaction)
-        assert ("Breaker", "3") in drafts[mock_interaction.user.id]["materials"]
+        assert ("Breaker", "3") in drafts[mock_interaction.user.id].materials
 
     async def test_non_numeric_quantity_sends_ephemeral_error(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
@@ -109,7 +117,7 @@ class TestAddMaterialModal:
     async def test_decimal_quantity_accepted(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
         await self._make_modal(mock_interaction.user.id, mock_message, qty="2.5").on_submit(mock_interaction)
-        assert ("Breaker", "2.5") in drafts[mock_interaction.user.id]["materials"]
+        assert ("Breaker", "2.5") in drafts[mock_interaction.user.id].materials
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +129,10 @@ class TestDraftViewUndoLast:
 
     async def test_undo_removes_last_material(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
-        drafts[mock_interaction.user.id]["materials"] = [("A", "1"), ("B", "2")]
+        drafts[mock_interaction.user.id].materials = [("A", "1"), ("B", "2")]
         mock_interaction.message = mock_message
         await DraftView(mock_interaction.user.id).undo_last.callback(mock_interaction)
-        assert drafts[mock_interaction.user.id]["materials"] == [("A", "1")]
+        assert drafts[mock_interaction.user.id].materials == [("A", "1")]
 
     async def test_undo_empty_sends_ephemeral(self, mock_interaction):
         _seed_draft(mock_interaction.user.id)
@@ -138,12 +146,14 @@ class TestDraftViewDone:
 
     async def test_done_removes_draft(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
+        drafts[mock_interaction.user.id].materials = [("Breaker", "2")]
         mock_interaction.message = mock_message
         await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
         assert mock_interaction.user.id not in drafts
 
     async def test_done_disables_all_buttons(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
+        drafts[mock_interaction.user.id].materials = [("Breaker", "2")]
         mock_interaction.message = mock_message
         view = DraftView(mock_interaction.user.id)
         await view.done.callback(mock_interaction)
@@ -151,12 +161,31 @@ class TestDraftViewDone:
 
     async def test_done_edits_message_with_final_embed(self, mock_interaction, mock_message):
         _seed_draft(mock_interaction.user.id)
+        drafts[mock_interaction.user.id].materials = [("Breaker", "2")]
         mock_interaction.message = mock_message
         await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
         mock_message.edit.assert_called_once()
         edited_embed = mock_message.edit.call_args.kwargs.get("embed")
         assert isinstance(edited_embed, discord.Embed)
         assert "Submitted" in edited_embed.title
+
+    async def test_done_with_no_materials_sends_ephemeral_error(self, mock_interaction, mock_message):
+        _seed_draft(mock_interaction.user.id)  # materials starts empty
+        mock_interaction.message = mock_message
+        await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_done_with_no_materials_does_not_remove_draft(self, mock_interaction, mock_message):
+        _seed_draft(mock_interaction.user.id)
+        mock_interaction.message = mock_message
+        await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
+        assert mock_interaction.user.id in drafts
+
+    async def test_done_with_no_materials_does_not_edit_message(self, mock_interaction, mock_message):
+        _seed_draft(mock_interaction.user.id)
+        mock_interaction.message = mock_message
+        await DraftView(mock_interaction.user.id).done.callback(mock_interaction)
+        mock_message.edit.assert_not_called()
 
 
 class TestDraftViewCancel:

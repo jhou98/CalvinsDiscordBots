@@ -1,3 +1,3 @@
-# README
+# Helpers README
 
-Shared utility functions used by `cogs`
+Shared utility functions used by `cogs`.

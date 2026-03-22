@@ -2,11 +2,13 @@ import discord
 import logging
 from discord import app_commands
 from discord.ext import commands
+from src.models.draft_change_order import DraftChangeOrder
 from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed
 
-# In-memory draft store  { user_id: { date, submitted_at, scope, materials } }
-drafts: dict[int, dict] = {}
+# In-memory draft store  { user_id: DraftChangeOrder }
+drafts: dict[int, DraftChangeOrder] = {}
 log = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Modal 1: Date + Scope
@@ -37,20 +39,19 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
-        
-        drafts[interaction.user.id] = {
-            "date": date,
-            "submitted_at": discord_timestamp(),
-            "scope": self.scope_added.value.strip(),
-            "materials": [],
-        }
+
+        drafts[interaction.user.id] = DraftChangeOrder(
+            date=date,
+            submitted_at=discord_timestamp(),
+            scope=self.scope_added.value.strip(),
+        )
         draft = drafts[interaction.user.id]
         view = DraftView(interaction.user.id)
         embed = _draft_embed(interaction.user, draft)
         await interaction.response.send_message(
             content="Draft created! Add materials below, then click **Done** when finished.",
             embed=embed,
-            view=view
+            view=view,
         )
 
         # Store the message reference so on_timeout can edit it
@@ -98,7 +99,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         draft = drafts.get(self.user_id)
         if not draft:
             log.warning(
-                "Draft not found for user %s (%d) on material add", 
+                "Draft not found for user %s (%d) on material add",
                 interaction.user, interaction.user.id
             )
             await interaction.response.send_message(
@@ -107,7 +108,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
             )
             return
 
-        draft["materials"].append((self.item_name.value.strip(), qty))
+        draft.materials.append((self.item_name.value.strip(), qty))
         await interaction.response.defer()
         await self.message.edit(
             embed=_draft_embed(interaction.user, draft),
@@ -118,24 +119,24 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
 # ---------------------------------------------------------------------------
 # Shared embed builders (thin wrappers around the shared util)
 # ---------------------------------------------------------------------------
-def _draft_embed(user, draft):
+def _draft_embed(user, draft: DraftChangeOrder):
     return build_change_order_embed(
         user=user,
-        date=draft["date"],
-        submitted_at=draft["submitted_at"],
-        scope=draft["scope"],
-        material_list=draft["materials"],
+        date=draft.date,
+        submitted_at=draft.submitted_at,
+        scope=draft.scope,
+        material_list=draft.materials,
         title="📋 Change Order Draft",
         color=discord.Color.blue(),
     )
 
-def _final_embed(user, draft):
+def _final_embed(user, draft: DraftChangeOrder):
     return build_change_order_embed(
         user=user,
-        date=draft["date"],
-        submitted_at=draft["submitted_at"],
-        scope=draft["scope"],
-        material_list=draft["materials"],
+        date=draft.date,
+        submitted_at=draft.submitted_at,
+        scope=draft.scope,
+        material_list=draft.materials,
         title="✅ Change Order — Submitted",
         color=discord.Color.green(),
     )
@@ -149,11 +150,9 @@ class DraftView(discord.ui.View):
         super().__init__(timeout=3600)
         self.user_id = user_id
         self.message: discord.Message | None = None
-    
+
     async def on_timeout(self):
-        """
-        Auto clean-up draft on timeout to avoid memory leaks and user lockout
-        """
+        """Auto clean-up draft on timeout to avoid memory leaks and user lockout."""
         drafts.pop(self.user_id, None)
         if self.message:
             for child in self.children:
@@ -190,10 +189,10 @@ class DraftView(discord.ui.View):
     @discord.ui.button(label="↩️ Undo Last", style=discord.ButtonStyle.secondary)
     async def undo_last(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.get(interaction.user.id)
-        if not draft or not draft["materials"]:
+        if not draft or not draft.materials:
             await interaction.response.send_message("Nothing to undo.", ephemeral=True)
             return
-        draft["materials"].pop()
+        draft.materials.pop()
         await interaction.response.defer()
         await interaction.message.edit(
             embed=_draft_embed(interaction.user, draft),
@@ -202,10 +201,20 @@ class DraftView(discord.ui.View):
 
     @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.success)
     async def done(self, interaction: discord.Interaction, button: discord.ui.Button):
-        draft = drafts.pop(interaction.user.id, None)
+        draft = drafts.get(interaction.user.id)
         if not draft:
             await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
             return
+
+        if not draft.materials:
+            await interaction.response.send_message(
+                "⚠️ Please add at least one material before submitting. "
+                "Use **➕ Add Material** or **🗑️ Cancel** to discard.",
+                ephemeral=True,
+            )
+            return
+
+        drafts.pop(interaction.user.id)
         for child in self.children:
             child.disabled = True
         await interaction.response.defer()

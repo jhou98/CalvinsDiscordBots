@@ -1,4 +1,4 @@
-# README
+# Cogs README
 
 Cogs are Discord bot modules, each containing one slash command. Both cogs import shared helpers from `helpers/`.
 
