@@ -2,7 +2,6 @@
 Shared fixtures for Discord bot tests.
 Provides mock Discord objects so tests run without a live bot.
 """
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 import discord
@@ -27,6 +26,8 @@ def mock_interaction(mock_user, mock_message):
     """A fake discord.Interaction wired up with common async methods."""
     interaction = MagicMock(spec=discord.Interaction)
     interaction.user = mock_user
+    interaction.guild_id = 111
+    interaction.channel_id = 222
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()

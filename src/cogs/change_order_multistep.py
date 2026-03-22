@@ -1,14 +1,51 @@
 import discord
 import logging
+from datetime import datetime, timezone
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from src.models.draft_change_order import DraftChangeOrder
 from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed
 
-# In-memory draft store  { user_id: DraftChangeOrder }
-drafts: dict[int, DraftChangeOrder] = {}
+# In-memory draft store  { (user_id, guild_id, channel_id): DraftChangeOrder }
+drafts: dict[tuple[int, int, int], DraftChangeOrder] = {}
 log = logging.getLogger(__name__)
 
+DRAFT_TTL_SECONDS = 86400  # 1 day
+SWEEP_INTERVAL_MINUTES = 6 * 60   # how often the background task evicts stale drafts
+
+# ---------------------------------------------------------------------------
+# Expiry helpers
+# ---------------------------------------------------------------------------
+
+def _is_expired(draft: DraftChangeOrder) -> bool:
+    """Return True if the draft has exceeded its TTL."""
+    age = (datetime.now(timezone.utc) - draft.created_at).total_seconds()
+    return age > DRAFT_TTL_SECONDS
+
+
+async def _evict(draft_key: tuple[int, int, int]) -> None:
+    """
+    Remove a draft from the store and edit its Discord message to show it expired.
+    Safe to call from both the lazy check and the background sweep.
+    """
+    draft = drafts.pop(draft_key, None)
+    if draft and draft.message:
+        try:
+            await draft.message.edit(
+                content="⏱️ Change order expired due to inactivity.",
+                embed=None,
+                view=None,
+            )
+        except (discord.NotFound, discord.HTTPException):
+            pass  # Message deleted or uneditable — nothing to do
+
+# ---------------------------------------------------------------------------
+# Key helper
+# ---------------------------------------------------------------------------
+
+def _draft_key(interaction: discord.Interaction) -> tuple[int, int, int]:
+    """Unique draft key scoped to (user, guild, channel)."""
+    return (interaction.user.id, interaction.guild_id, interaction.channel_id)
 
 # ---------------------------------------------------------------------------
 # Modal 1: Date + Scope
@@ -34,19 +71,20 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             date = resolve_date(self.date_requested.value)
         except ValueError as e:
             log.warning(
-                "Date error for user %s, (%d): %s",
-                interaction.user, interaction.user.id, e
+                "Date error for user %s (%d): %s",
+                interaction.user, interaction.user.id, e,
             )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
 
-        drafts[interaction.user.id] = DraftChangeOrder(
+        draft_key = _draft_key(interaction)
+        drafts[draft_key] = DraftChangeOrder(
             date=date,
             submitted_at=discord_timestamp(),
             scope=self.scope_added.value.strip(),
         )
-        draft = drafts[interaction.user.id]
-        view = DraftView(interaction.user.id)
+        draft = drafts[draft_key]
+        view = DraftView(draft_key)
         embed = _draft_embed(interaction.user, draft)
         await interaction.response.send_message(
             content="Draft created! Add materials below, then click **Done** when finished.",
@@ -54,9 +92,11 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             view=view,
         )
 
-        # Store the message reference so on_timeout can edit it
-        view.message = await interaction.original_response()
-
+        # Store message on both the view (for on_timeout compat) and the draft
+        # (so the sweep can reach it without a live View object).
+        message = await interaction.original_response()
+        view.message = message
+        draft.message = message
 
 # ---------------------------------------------------------------------------
 # Modal 2: Single material entry
@@ -76,19 +116,30 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         max_length=20,
     )
 
-    def __init__(self, user_id: int, message: discord.Message):
+    def __init__(self, draft_key: tuple[int, int, int], message: discord.Message):
         super().__init__()
-        self.user_id = user_id
+        self.draft_key = draft_key
         self.message = message
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Lazy expiry check before doing any work
+        draft = drafts.get(self.draft_key)
+        if draft and _is_expired(draft):
+            log.info("Lazy eviction on material add for key %s", self.draft_key)
+            await _evict(self.draft_key)
+            await interaction.response.send_message(
+                "⏱️ Your draft expired. Please run `/changeorderpro` again.",
+                ephemeral=True,
+            )
+            return
+
         qty = self.quantity.value.strip()
         try:
             float(qty)
         except ValueError:
             log.warning(
                 "Invalid quantity '%s' entered by %s (%d)",
-                qty, interaction.user, interaction.user.id
+                qty, interaction.user, interaction.user.id,
             )
             await interaction.response.send_message(
                 f"⚠️ Quantity must be a number (you entered `{qty}`). Please try again.",
@@ -96,12 +147,8 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
             )
             return
 
-        draft = drafts.get(self.user_id)
         if not draft:
-            log.warning(
-                "Draft not found for user %s (%d) on material add",
-                interaction.user, interaction.user.id
-            )
+            log.warning("Draft not found for key %s on material add", self.draft_key)
             await interaction.response.send_message(
                 "⚠️ Your draft expired. Please run `/changeorderpro` again.",
                 ephemeral=True,
@@ -112,59 +159,64 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         await interaction.response.defer()
         await self.message.edit(
             embed=_draft_embed(interaction.user, draft),
-            view=DraftView(self.user_id),
+            view=DraftView(self.draft_key),
         )
-
 
 # ---------------------------------------------------------------------------
 # Shared embed builders (thin wrappers around the shared util)
 # ---------------------------------------------------------------------------
-def _draft_embed(user, draft: DraftChangeOrder):
+
+def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
     return build_change_order_embed(
         user=user,
         date=draft.date,
         submitted_at=draft.submitted_at,
         scope=draft.scope,
         material_list=draft.materials,
-        title="📋 Change Order Draft",
+        title="⚡ Change Order Draft",
         color=discord.Color.blue(),
     )
 
-def _final_embed(user, draft: DraftChangeOrder):
+def _final_embed(user, draft: DraftChangeOrder) -> discord.Embed:
     return build_change_order_embed(
         user=user,
         date=draft.date,
         submitted_at=draft.submitted_at,
         scope=draft.scope,
         material_list=draft.materials,
-        title="✅ Change Order — Submitted",
+        title="⚡ Change Order — Submitted",
         color=discord.Color.green(),
     )
-
 
 # ---------------------------------------------------------------------------
 # View: buttons attached to the draft message
 # ---------------------------------------------------------------------------
+
 class DraftView(discord.ui.View):
-    def __init__(self, user_id: int):
-        super().__init__(timeout=3600)
-        self.user_id = user_id
+    def __init__(self, draft_key: tuple[int, int, int]):
+        super().__init__(timeout=None)  # TTL managed by created_at + sweep, not discord.py
+        self.draft_key = draft_key
         self.message: discord.Message | None = None
 
-    async def on_timeout(self):
-        """Auto clean-up draft on timeout to avoid memory leaks and user lockout."""
-        drafts.pop(self.user_id, None)
-        if self.message:
-            for child in self.children:
-                child.disabled = True
-            try:
-                await self.message.edit(
-                    content="⏱️ Change order expired due to inactivity.",
-                    embed=None,
-                    view=self,
-                )
-            except discord.NotFound:
-                pass  # Message was deleted — nothing to edit
+    @property
+    def user_id(self) -> int:
+        return self.draft_key[0]
+
+    async def _check_expired(self, interaction: discord.Interaction) -> bool:
+        """
+        Lazy expiry guard called at the top of every button callback.
+        Returns True if the draft was expired and the interaction has been responded to.
+        """
+        draft = drafts.get(self.draft_key)
+        if draft and _is_expired(draft):
+            log.info("Lazy eviction on button press for key %s", self.draft_key)
+            await _evict(self.draft_key)
+            await interaction.response.send_message(
+                "⏱️ This change order has expired. Please run `/changeorderpro` again.",
+                ephemeral=True,
+            )
+            return True
+        return False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
@@ -175,20 +227,24 @@ class DraftView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="➕ Add Material", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="⚡ Add Material", style=discord.ButtonStyle.primary)
     async def add_material(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id not in drafts:
+        if await self._check_expired(interaction):
+            return
+        if self.draft_key not in drafts:
             await interaction.response.send_message(
-                "⚠️ Draft not found. Please run `/changeorderpro` again.", ephemeral=True
+                "⚠️ Draft not found. Please run `/changeorderpro` again.", ephemeral=True,
             )
             return
         await interaction.response.send_modal(
-            AddMaterialModal(user_id=interaction.user.id, message=interaction.message)
+            AddMaterialModal(draft_key=self.draft_key, message=interaction.message)
         )
 
-    @discord.ui.button(label="↩️ Undo Last", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="⚡ Undo Last", style=discord.ButtonStyle.secondary)
     async def undo_last(self, interaction: discord.Interaction, button: discord.ui.Button):
-        draft = drafts.get(interaction.user.id)
+        if await self._check_expired(interaction):
+            return
+        draft = drafts.get(self.draft_key)
         if not draft or not draft.materials:
             await interaction.response.send_message("Nothing to undo.", ephemeral=True)
             return
@@ -196,63 +252,95 @@ class DraftView(discord.ui.View):
         await interaction.response.defer()
         await interaction.message.edit(
             embed=_draft_embed(interaction.user, draft),
-            view=DraftView(self.user_id),
+            view=DraftView(self.draft_key),
         )
 
-    @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="⚡ Done", style=discord.ButtonStyle.success)
     async def done(self, interaction: discord.Interaction, button: discord.ui.Button):
-        draft = drafts.get(interaction.user.id)
+        if await self._check_expired(interaction):
+            return
+        draft = drafts.get(self.draft_key)
         if not draft:
             await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
             return
-
         if not draft.materials:
             await interaction.response.send_message(
                 "⚠️ Please add at least one material before submitting. "
-                "Use **➕ Add Material** or **🗑️ Cancel** to discard.",
+                "Use **⚡ Add Material** or **⚡ Cancel** to discard.",
                 ephemeral=True,
             )
             return
-
-        drafts.pop(interaction.user.id)
+        drafts.pop(self.draft_key)
         for child in self.children:
             child.disabled = True
         await interaction.response.defer()
         await interaction.message.edit(
-            content="✅ Change order submitted!",
+            content="⚡ Change order submitted!",
             embed=_final_embed(interaction.user, draft),
             view=self,
         )
 
-    @discord.ui.button(label="🗑️ Cancel", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="⚡ Cancel", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        drafts.pop(interaction.user.id, None)
+        if await self._check_expired(interaction):
+            return
+        drafts.pop(self.draft_key, None)
         for child in self.children:
             child.disabled = True
         await interaction.response.defer()
-        await interaction.message.edit(content="🗑️ Change order cancelled.", embed=None, view=self)
-
+        await interaction.message.edit(content="⚡ Change order cancelled.", embed=None, view=self)
 
 # ---------------------------------------------------------------------------
-# Cog
+# Cog + background sweep
 # ---------------------------------------------------------------------------
+
 class ChangeOrderMultiStep(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.sweep_expired_drafts.start()
+
+    def cog_unload(self):
+        self.sweep_expired_drafts.cancel()
+
+
+    @tasks.loop(minutes=SWEEP_INTERVAL_MINUTES)
+    async def sweep_expired_drafts(self):
+        """
+        Background task (runs every SWEEP_INTERVAL_MINUTES) that evicts stale drafts
+        from memory and edits their Discord messages to show the expiry notice.
+        Keeps the drafts dict bounded on low-resource hosts.
+        """
+        expired_keys = [key for key, draft in drafts.items() if _is_expired(draft)]
+        if expired_keys:
+            log.info("Sweep evicting %d expired draft(s): %s", len(expired_keys), expired_keys)
+        for key in expired_keys:
+            await _evict(key)
+
+    @sweep_expired_drafts.before_loop
+    async def before_sweep(self):
+        await self.bot.wait_until_ready()
 
     @app_commands.command(
         name="changeorderpro",
         description="Submit a change order (add materials one at a time with + button)",
     )
     async def change_order_pro(self, interaction: discord.Interaction):
-        if interaction.user.id in drafts:
+        draft_key = _draft_key(interaction)
+
+        # Lazy expiry on command entry — cleans up before the duplicate check
+        existing = drafts.get(draft_key)
+        if existing and _is_expired(existing):
+            log.info("Lazy eviction on command entry for key %s", draft_key)
+            await _evict(draft_key)
+
+        if draft_key in drafts:
             await interaction.response.send_message(
-                "⚠️ You already have a change order in progress. Finish or cancel it before starting a new one.",
+                "⚠️ You already have a change order in progress in this channel. "
+                "Finish or cancel it before starting a new one.",
                 ephemeral=True,
             )
             return
         await interaction.response.send_modal(ScopeModal())
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ChangeOrderMultiStep(bot))
