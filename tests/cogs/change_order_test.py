@@ -188,12 +188,10 @@ class TestAddMaterialModal:
     def setup_method(self):
         _clear_drafts()
 
-    def _make_modal(self, draft_key, message, name="Breaker", qty="3"):
+    def _make_modal(self, draft_key, message, materials_text="Breaker - 3"):
         modal = AddMaterialModal(draft_key=draft_key, message=message)
-        modal.item_name = MagicMock()
-        modal.item_name.value = name
-        modal.quantity = MagicMock()
-        modal.quantity.value = qty
+        modal.materials_input = MagicMock()
+        modal.materials_input.value = materials_text
         return modal
 
     async def test_adds_material_to_draft(self, mock_interaction, mock_message):
@@ -203,7 +201,17 @@ class TestAddMaterialModal:
 
     async def test_non_numeric_quantity_sends_ephemeral_error(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, qty="lots").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_non_numeric_quantity_does_not_add_to_draft(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - lots").on_submit(mock_interaction)
+        assert drafts[_TEST_KEY].materials == []
+
+    async def test_missing_separator_sends_ephemeral_error(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="BadLine").on_submit(mock_interaction)
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_missing_draft_sends_ephemeral_error(self, mock_interaction, mock_message):
@@ -217,7 +225,7 @@ class TestAddMaterialModal:
 
     async def test_decimal_quantity_accepted(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY)
-        await self._make_modal(_TEST_KEY, mock_message, qty="2.5").on_submit(mock_interaction)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="Breaker - 2.5").on_submit(mock_interaction)
         assert ("Breaker", "2.5") in drafts[_TEST_KEY].materials
 
     async def test_expired_draft_sends_ephemeral_error(self, mock_interaction, mock_message):
@@ -233,8 +241,43 @@ class TestAddMaterialModal:
     async def test_expired_draft_does_not_add_material(self, mock_interaction, mock_message):
         _seed_draft(_TEST_KEY, expired=True)
         await self._make_modal(_TEST_KEY, mock_message).on_submit(mock_interaction)
-        # Draft was evicted — nothing to check materials on
         assert _TEST_KEY not in drafts
+
+    # --- bulk / multi-line ---
+
+    async def test_adds_multiple_materials_in_one_submit(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        raw = "20A Breaker - 3\n12 AWG Wire - 2\nJunction Box - 5"
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        materials = drafts[_TEST_KEY].materials
+        assert ("20A Breaker", "3") in materials
+        assert ("12 AWG Wire", "2") in materials
+        assert ("Junction Box", "5") in materials
+
+    async def test_bulk_add_appends_to_existing_materials(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        drafts[_TEST_KEY].materials = [("Existing Item", "1")]
+        raw = "New Item A - 4\nNew Item B - 7"
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        assert len(drafts[_TEST_KEY].materials) == 3
+        assert ("Existing Item", "1") in drafts[_TEST_KEY].materials
+
+    async def test_mixed_valid_and_invalid_sends_ephemeral_error(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        raw = "Good Item - 2\nBadLine\nAnother Good - 10"
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_mixed_valid_and_invalid_does_not_partially_add(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        raw = "Good Item - 2\nBadLine"
+        await self._make_modal(_TEST_KEY, mock_message, materials_text=raw).on_submit(mock_interaction)
+        assert drafts[_TEST_KEY].materials == []
+
+    async def test_dash_in_item_name_parsed_correctly(self, mock_interaction, mock_message):
+        _seed_draft(_TEST_KEY)
+        await self._make_modal(_TEST_KEY, mock_message, materials_text="12-2 Wire - 5").on_submit(mock_interaction)
+        assert ("12-2 Wire", "5") in drafts[_TEST_KEY].materials
 
 
 # ---------------------------------------------------------------------------

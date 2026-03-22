@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from discord import app_commands
 from discord.ext import commands, tasks
 from src.models.draft_change_order import DraftChangeOrder
-from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed, format_plain_text
+from src.helpers.helpers import resolve_date, discord_timestamp, build_change_order_embed, format_plain_text, parse_materials
 
 # In-memory draft store  { (user_id, guild_id, channel_id): DraftChangeOrder }
 drafts: dict[tuple[int, int, int], DraftChangeOrder] = {}
@@ -103,21 +103,16 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
 
 
 # ---------------------------------------------------------------------------
-# Modal 2: Single material entry
+# Modal 2: Multi-line material entry
 # ---------------------------------------------------------------------------
-class AddMaterialModal(discord.ui.Modal, title="Add Material"):
+class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
 
-    item_name = discord.ui.TextInput(
-        label="Item Name",
-        placeholder="e.g.  20A Breaker",
+    materials_input = discord.ui.TextInput(
+        label="Materials  (Name - Quantity, one per line)",
+        placeholder="20A Breaker - 3\n12 AWG Wire (250ft) - 2\nJunction Box - 5",
+        style=discord.TextStyle.paragraph,
         required=True,
-        max_length=100,
-    )
-    quantity = discord.ui.TextInput(
-        label="Quantity",
-        placeholder="e.g.  3",
-        required=True,
-        max_length=20,
+        max_length=1000,
     )
 
     def __init__(self, draft_key: tuple[int, int, int], message: discord.Message):
@@ -132,21 +127,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
             log.info("Lazy eviction on material add for key %s", self.draft_key)
             await _evict(self.draft_key)
             await interaction.response.send_message(
-                "⏱️ Your draft expired. Please run `/changeorderpro` again.",
-                ephemeral=True,
-            )
-            return
-
-        qty = self.quantity.value.strip()
-        try:
-            float(qty)
-        except ValueError:
-            log.warning(
-                "Invalid quantity '%s' entered by %s (%d)",
-                qty, interaction.user, interaction.user.id,
-            )
-            await interaction.response.send_message(
-                f"⚠️ Quantity must be a number (you entered `{qty}`). Please try again.",
+                "⏱️ Your draft expired. Please run `/changeorder` again.",
                 ephemeral=True,
             )
             return
@@ -154,17 +135,57 @@ class AddMaterialModal(discord.ui.Modal, title="Add Material"):
         if not draft:
             log.warning("Draft not found for key %s on material add", self.draft_key)
             await interaction.response.send_message(
-                "⚠️ Your draft expired. Please run `/changeorderpro` again.",
+                "⚠️ Your draft expired. Please run `/changeorder` again.",
                 ephemeral=True,
             )
             return
 
-        draft.materials.append((self.item_name.value.strip(), qty))
+        material_list, parse_errors = parse_materials(self.materials_input.value)
+
+        non_numeric = [
+            f"`{name} - {qty}`"
+            for name, qty in material_list
+            if not _is_numeric(qty)
+        ]
+
+        if parse_errors or non_numeric:
+            error_lines = []
+            if parse_errors:
+                error_lines.append(
+                    "**Missing quantity** (expected `Name - Quantity`):\n"
+                    + "\n".join(f"• `{e}`" for e in parse_errors)
+                )
+            if non_numeric:
+                error_lines.append(
+                    "**Non-numeric quantity:**\n"
+                    + "\n".join(f"• {e}" for e in non_numeric)
+                )
+            log.warning(
+                "Material parse/validation errors for %s (%d): parse=%s non_numeric=%s",
+                interaction.user, interaction.user.id, parse_errors, non_numeric,
+            )
+            await interaction.response.send_message(
+                "⚠️ Some lines couldn't be added:\n\n"
+                + "\n\n".join(error_lines)
+                + "\n\nPlease use the format `Name - Quantity` with a numeric quantity on each line.",
+                ephemeral=True,
+            )
+            return
+
+        draft.materials.extend(material_list)
         await interaction.response.defer()
         await self.message.edit(
             embed=_draft_embed(interaction.user, draft),
             view=DraftView(self.draft_key),
         )
+
+
+def _is_numeric(value: str) -> bool:
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
