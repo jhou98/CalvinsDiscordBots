@@ -25,10 +25,10 @@ from src.models.draft_change_order import DraftChangeOrder
 # Helpers
 # ---------------------------------------------------------------------------
 
-_TEST_KEY = (123456789, 111, 222)  # must match mock_interaction fixture IDs
+_TEST_KEY = ("123456789", "222")  # must match mock_interaction fixture IDs
 
 
-def _seed_draft(draft_key: tuple[int, int, int] = _TEST_KEY, *, expired: bool = False):
+def _seed_draft(draft_key: tuple[str, str] = _TEST_KEY, *, expired: bool = False):
     """Insert a draft into the store. Pass expired=True to backdate created_at past the TTL."""
     age = timedelta(seconds=DRAFT_TTL_SECONDS + 60) if expired else timedelta(seconds=0)
     drafts[draft_key] = DraftChangeOrder(
@@ -44,7 +44,7 @@ def _clear_drafts():
     drafts.clear()
 
 
-def _make_interaction(user_id=123456789, guild_id=111, channel_id=222):
+def _make_interaction(user_id="123456789", channel_id="222"):
     """Build a self-contained mock interaction with configurable IDs."""
     mock_message = MagicMock(spec=discord.Message)
     mock_message.edit = AsyncMock()
@@ -55,7 +55,6 @@ def _make_interaction(user_id=123456789, guild_id=111, channel_id=222):
 
     interaction = MagicMock(spec=discord.Interaction)
     interaction.user = user
-    interaction.guild_id = guild_id
     interaction.channel_id = channel_id
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
@@ -118,7 +117,7 @@ class TestEvict:
         await _evict(_TEST_KEY)  # should not raise
 
     async def test_evict_nonexistent_key_does_not_raise(self):
-        await _evict((0, 0, 0))  # not in store — should be a no-op
+        await _evict(("0", "0"))  # not in store — should be a no-op
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +498,7 @@ class TestSweepExpiredDrafts:
         assert _TEST_KEY not in drafts
 
     async def test_sweep_preserves_fresh_drafts(self):
-        fresh_key = (111, 111, 111)
+        fresh_key = ("111", "111")
         _seed_draft(fresh_key, expired=False)
         cog = ChangeOrder(MagicMock())
         cog.sweep_expired_drafts.cancel()
@@ -515,8 +514,8 @@ class TestSweepExpiredDrafts:
         mock_message.edit.assert_called_once()
 
     async def test_sweep_mixed_drafts(self):
-        expired_key = (1, 1, 1)
-        fresh_key = (2, 2, 2)
+        expired_key = ("1", "1")
+        fresh_key = ("2", "2")
         _seed_draft(expired_key, expired=True)
         _seed_draft(fresh_key, expired=False)
         cog = ChangeOrder(MagicMock())
@@ -536,8 +535,8 @@ class TestMultiChannelDraftIsolation:
         _clear_drafts()
 
     async def test_same_user_different_channels_independent(self):
-        key_ch1 = (123456789, 111, 222)
-        key_ch2 = (123456789, 111, 333)
+        key_ch1 = ("123456789", "222")
+        key_ch2 = ("123456789", "333")
         _seed_draft(key_ch1)
         _seed_draft(key_ch2)
         drafts[key_ch1].materials = [("A", "1")]

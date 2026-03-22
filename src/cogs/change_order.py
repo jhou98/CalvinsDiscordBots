@@ -14,12 +14,14 @@ from src.helpers.helpers import (
 )
 from src.models.draft_change_order import DraftChangeOrder
 
-# In-memory draft store  { (user_id, guild_id, channel_id): DraftChangeOrder }
-drafts: dict[tuple[int, int, int], DraftChangeOrder] = {}
+# In-memory draft store  { (user_id, channel_id): DraftChangeOrder }
+# channel_id is unique across Discord so guild_id is redundant
+# IDs stored as strings to avoid integer overflow on large snowflakes
+drafts: dict[tuple[str, str], DraftChangeOrder] = {}
 log = logging.getLogger(__name__)
 
 DRAFT_TTL_SECONDS = 86400  # 1 day
-SWEEP_INTERVAL_HOURS = 6  # how often the background task evicts stale drafts
+SWEEP_INTERVAL_MINS = 1 * 60  # how often the background task evicts stale drafts
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +33,7 @@ def _is_expired(draft: DraftChangeOrder) -> bool:
     return age > DRAFT_TTL_SECONDS
 
 
-async def _evict(draft_key: tuple[int, int, int]) -> None:
+async def _evict(draft_key: tuple[str, str]) -> None:
     """
     Remove a draft from the store and edit its Discord message to show it expired.
     Safe to call from both the lazy check and the background sweep.
@@ -53,9 +55,9 @@ async def _evict(draft_key: tuple[int, int, int]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _draft_key(interaction: discord.Interaction) -> tuple[int, int, int]:
-    """Unique draft key scoped to (user, guild, channel)."""
-    return (interaction.user.id, interaction.guild_id, interaction.channel_id)
+def _draft_key(interaction: discord.Interaction) -> tuple[str, str]:
+    """Unique draft key scoped to (user, channel). channel_id is unique across Discord."""
+    return (str(interaction.user.id), str(interaction.channel_id))
 
 
 # ---------------------------------------------------------------------------
@@ -81,9 +83,10 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             date = resolve_date(self.date_requested.value)
         except ValueError as e:
             log.warning(
-                "Date error for user %s (%d): %s",
+                "Date error for user %s (%s) in channel %s: %s",
                 interaction.user,
                 interaction.user.id,
+                interaction.channel_id,
                 e,
             )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
@@ -123,7 +126,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         max_length=1000,
     )
 
-    def __init__(self, draft_key: tuple[int, int, int], message: discord.Message):
+    def __init__(self, draft_key: tuple[str, str], message: discord.Message):
         super().__init__()
         self.draft_key = draft_key
         self.message = message
@@ -132,7 +135,11 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         # Lazy expiry check before doing any work
         draft = drafts.get(self.draft_key)
         if draft and _is_expired(draft):
-            log.info("Lazy eviction on material add for key %s", self.draft_key)
+            log.info(
+                "Lazy eviction on material add for user %s in channel %s",
+                self.draft_key[0],
+                self.draft_key[1],
+            )
             await _evict(self.draft_key)
             await interaction.response.send_message(
                 "⏱️ Your draft expired. Please run `/changeorder` again.",
@@ -141,7 +148,11 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
             return
 
         if not draft:
-            log.warning("Draft not found for key %s on material add", self.draft_key)
+            log.warning(
+                "Draft not found for user %s in channel %s on material add",
+                self.draft_key[0],
+                self.draft_key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Your draft expired. Please run `/changeorder` again.",
                 ephemeral=True,
@@ -164,9 +175,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
                     "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
                 )
             log.warning(
-                "Material parse/validation errors for %s (%d): parse=%s non_numeric=%s",
+                "Material parse/validation errors for user %s (%s) in channel %s: parse=%s non_numeric=%s",
                 interaction.user,
                 interaction.user.id,
+                interaction.channel_id,
                 parse_errors,
                 non_numeric,
             )
@@ -253,13 +265,13 @@ class SubmittedView(discord.ui.View):
 
 
 class DraftView(discord.ui.View):
-    def __init__(self, draft_key: tuple[int, int, int]):
+    def __init__(self, draft_key: tuple[str, str]):
         super().__init__(timeout=None)  # TTL managed by created_at + sweep, not discord.py
         self.draft_key = draft_key
         self.message: discord.Message | None = None
 
     @property
-    def user_id(self) -> int:
+    def user_id(self) -> str:
         return self.draft_key[0]
 
     async def _check_expired(self, interaction: discord.Interaction) -> bool:
@@ -269,7 +281,11 @@ class DraftView(discord.ui.View):
         """
         draft = drafts.get(self.draft_key)
         if draft and _is_expired(draft):
-            log.info("Lazy eviction on button press for key %s", self.draft_key)
+            log.info(
+                "Lazy eviction on button press for user %s in channel %s",
+                self.draft_key[0],
+                self.draft_key[1],
+            )
             await _evict(self.draft_key)
             await interaction.response.send_message(
                 "⏱️ This change order has expired. Please run `/changeorderpro` again.",
@@ -279,7 +295,7 @@ class DraftView(discord.ui.View):
         return False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.user_id:
+        if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
                 "⚠️ Only the person who started this change order can modify it.",
                 ephemeral=True,
@@ -369,16 +385,20 @@ class ChangeOrder(commands.Cog):
     def cog_unload(self):
         self.sweep_expired_drafts.cancel()
 
-    @tasks.loop(hours=SWEEP_INTERVAL_HOURS)
+    @tasks.loop(minutes=SWEEP_INTERVAL_MINS)
     async def sweep_expired_drafts(self):
         """
-        Background task (runs every SWEEP_INTERVAL_HOURS) that evicts stale drafts
+        Background task (runs every SWEEP_INTERVAL_MINS) that evicts stale drafts
         from memory and edits their Discord messages to show the expiry notice.
         Keeps the drafts dict bounded on low-resource hosts.
         """
         expired_keys = [key for key, draft in drafts.items() if _is_expired(draft)]
         if expired_keys:
-            log.info("Sweep evicting %d expired draft(s): %s", len(expired_keys), expired_keys)
+            log.info(
+                "Sweep evicting %d expired draft(s) from channels: %s",
+                len(expired_keys),
+                [key[1] for key in expired_keys],
+            )
         for key in expired_keys:
             await _evict(key)
 
@@ -396,7 +416,11 @@ class ChangeOrder(commands.Cog):
         # Lazy expiry on command entry — cleans up before the duplicate check
         existing = drafts.get(draft_key)
         if existing and _is_expired(existing):
-            log.info("Lazy eviction on command entry for key %s", draft_key)
+            log.info(
+                "Lazy eviction on command entry for user %s in channel %s",
+                draft_key[0],
+                draft_key[1],
+            )
             await _evict(draft_key)
 
         if draft_key in drafts:

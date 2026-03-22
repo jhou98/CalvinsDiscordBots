@@ -13,7 +13,7 @@ import pytest
 def mock_user():
     """A fake discord.Member with a stable ID and mention string."""
     user = MagicMock(spec=discord.Member)
-    user.id = 123456789
+    user.id = "123456789"
     user.mention = "<@123456789>"
     return user
 
@@ -31,8 +31,7 @@ def mock_interaction(mock_user, mock_message):
     """A fake discord.Interaction wired up with common async methods."""
     interaction = MagicMock(spec=discord.Interaction)
     interaction.user = mock_user
-    interaction.guild_id = 111
-    interaction.channel_id = 222
+    interaction.channel_id = "222"
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()
