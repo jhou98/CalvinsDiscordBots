@@ -9,6 +9,7 @@ Cogs are Discord bot modules, each containing one slash command. The cog imports
 2. **Step 1 modal** collects:
    - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
    - **Scope Added** — freeform description of work being added
+   - **Materials** — freeform multiline text for adding multiple materials (name + numeric quantity, one per line separated by " - ")
 3. A draft embed is posted with four buttons:
    - ➕ **Add Material** — opens a modal to add multiple material (name + numeric quantity, one per line separated by " - ")
    - ↩️ **Undo Last** — removes the most recently added material

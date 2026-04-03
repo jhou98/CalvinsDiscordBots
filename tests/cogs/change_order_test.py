@@ -129,12 +129,14 @@ class TestScopeModal:
     def setup_method(self):
         _clear_drafts()
 
-    def _make_modal(self, date="", scope="Install panel"):
+    def _make_modal(self, date="", scope="Install panel", materials_text=""):
         modal = ScopeModal()
         modal.date_requested = MagicMock()
         modal.date_requested.value = date
         modal.scope_added = MagicMock()
         modal.scope_added.value = scope
+        modal.materials_input = MagicMock()
+        modal.materials_input.value = materials_text
         return modal
 
     async def test_creates_draft_on_submit(self, mock_interaction):
@@ -149,9 +151,31 @@ class TestScopeModal:
         await self._make_modal(scope="Run new circuits").on_submit(mock_interaction)
         assert drafts[_draft_key(mock_interaction)].scope == "Run new circuits"
 
-    async def test_draft_materials_starts_empty(self, mock_interaction):
+    async def test_draft_materials_starts_empty_when_none_provided(self, mock_interaction):
         await self._make_modal().on_submit(mock_interaction)
         assert drafts[_draft_key(mock_interaction)].materials == []
+
+    async def test_draft_seeded_with_initial_materials(self, mock_interaction):
+        await self._make_modal(materials_text="Breaker - 3\nWire - 2").on_submit(mock_interaction)
+        materials = drafts[_draft_key(mock_interaction)].materials
+        assert ("Breaker", "3") in materials
+        assert ("Wire", "2") in materials
+
+    async def test_invalid_initial_material_format_sends_ephemeral_error(self, mock_interaction):
+        await self._make_modal(materials_text="BadLine").on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_invalid_initial_material_does_not_create_draft(self, mock_interaction):
+        await self._make_modal(materials_text="BadLine").on_submit(mock_interaction)
+        assert _draft_key(mock_interaction) not in drafts
+
+    async def test_non_numeric_initial_quantity_sends_ephemeral_error(self, mock_interaction):
+        await self._make_modal(materials_text="Breaker - lots").on_submit(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+    async def test_non_numeric_initial_quantity_does_not_create_draft(self, mock_interaction):
+        await self._make_modal(materials_text="Breaker - lots").on_submit(mock_interaction)
+        assert _draft_key(mock_interaction) not in drafts
 
     async def test_draft_message_stored_on_draft(self, mock_interaction, mock_message):
         await self._make_modal().on_submit(mock_interaction)
@@ -182,7 +206,6 @@ class TestScopeModal:
     async def test_invalid_date_does_not_create_draft(self, mock_interaction):
         await self._make_modal(date="2026-03-15").on_submit(mock_interaction)
         assert _draft_key(mock_interaction) not in drafts
-
 
 # ---------------------------------------------------------------------------
 # AddMaterialModal

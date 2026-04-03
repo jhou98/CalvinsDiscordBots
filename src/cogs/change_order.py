@@ -77,6 +77,13 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         required=True,
         max_length=1000,
     )
+    materials_input = discord.ui.TextInput(
+        label="Materials  (Name - Quantity, one per line)",
+        placeholder="20A Breaker - 3\n12 AWG Wire (250ft) - 2\nJunction Box - 5",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=1000,
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -92,11 +99,45 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
 
+        # Parse and validate initial materials if provided
+        material_list: list[tuple[str, str]] = []
+        if self.materials_input.value.strip():
+            material_list, parse_errors = parse_materials(self.materials_input.value)
+            non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)]
+
+            if parse_errors or non_numeric:
+                error_lines = []
+                if parse_errors:
+                    error_lines.append(
+                        "**Missing quantity** (expected `Name - Quantity`):\n"
+                        + "\n".join(f"• `{e}`" for e in parse_errors)
+                    )
+                if non_numeric:
+                    error_lines.append(
+                        "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
+                    )
+                log.warning(
+                    "Material parse/validation errors on scope submit for user %s (%s) in channel %s: parse=%s non_numeric=%s",
+                    interaction.user,
+                    interaction.user.id,
+                    interaction.channel_id,
+                    parse_errors,
+                    non_numeric,
+                )
+                await interaction.response.send_message(
+                    "⚠️ Some material lines couldn't be added:\n\n"
+                    + "\n\n".join(error_lines)
+                    + "\n\nPlease run `/changeorder` again and use the format `Name - Quantity` with a numeric quantity on each line.",
+                    ephemeral=True,
+                )
+                return
+
         draft_key = _draft_key(interaction)
         drafts[draft_key] = DraftChangeOrder(
             date=date,
             submitted_at=discord_timestamp(),
             scope=self.scope_added.value.strip(),
+            materials=material_list,
         )
         draft = drafts[draft_key]
         view = DraftView(draft_key)
@@ -107,12 +148,9 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
             view=view,
         )
 
-        # Store message on both the view (for on_timeout compat) and the draft
-        # (so the sweep can reach it without a live View object).
         message = await interaction.original_response()
         view.message = message
         draft.message = message
-
 
 # ---------------------------------------------------------------------------
 # Modal 2: Multi-line material entry
