@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
-import pytest
 
 from src.cogs.change_order import (
     COMMAND,
@@ -14,14 +13,11 @@ from src.cogs.change_order import (
     DraftView,
     ScopeModal,
     SubmittedView,
-    _draft_embed,
-    _final_embed,
     drafts,
 )
 from src.models.draft_change_order import DraftChangeOrder
 from src.views.draft_view_base import (
     DRAFT_TTL_SECONDS,
-    _is_numeric,
     draft_key,
     evict,
     is_expired,
@@ -69,6 +65,7 @@ def _make_interaction(user_id="123456789", channel_id="222"):
 # ---------------------------------------------------------------------------
 # is_expired / evict
 # ---------------------------------------------------------------------------
+
 
 class TestIsExpired:
     def test_fresh_draft_not_expired(self):
@@ -119,6 +116,7 @@ class TestEvict:
 # ---------------------------------------------------------------------------
 # ScopeModal
 # ---------------------------------------------------------------------------
+
 
 class TestScopeModal:
     def setup_method(self):
@@ -204,6 +202,7 @@ class TestScopeModal:
 # ---------------------------------------------------------------------------
 # DraftView buttons
 # ---------------------------------------------------------------------------
+
 
 class TestDraftViewUndoLast:
     def setup_method(self):
@@ -317,6 +316,7 @@ async def test_draft_view_has_no_timeout():
 # SubmittedView
 # ---------------------------------------------------------------------------
 
+
 class TestSubmittedView:
     async def test_copy_text_sends_ephemeral(self, mock_interaction):
         await SubmittedView("text").copy_text.callback(mock_interaction)
@@ -339,6 +339,7 @@ class TestSubmittedView:
 # ---------------------------------------------------------------------------
 # Background sweep
 # ---------------------------------------------------------------------------
+
 
 class TestSweepExpiredDrafts:
     def setup_method(self):
@@ -370,6 +371,7 @@ class TestSweepExpiredDrafts:
 # ---------------------------------------------------------------------------
 # Multi-channel isolation
 # ---------------------------------------------------------------------------
+
 
 class TestMultiChannelIsolation:
     def setup_method(self):
@@ -413,6 +415,7 @@ class TestMultiChannelIsolation:
 # ChangeOrder cog
 # ---------------------------------------------------------------------------
 
+
 class TestChangeOrderCog:
     def setup_method(self):
         _clear_drafts()
@@ -422,9 +425,7 @@ class TestChangeOrderCog:
         cog._stop_sweep()
         await cog.change_order.callback(cog, mock_interaction)
         mock_interaction.response.send_modal.assert_called_once()
-        assert isinstance(
-            mock_interaction.response.send_modal.call_args.args[0], ScopeModal
-        )
+        assert isinstance(mock_interaction.response.send_modal.call_args.args[0], ScopeModal)
 
     async def test_blocks_second_draft_same_channel(self, mock_interaction):
         _seed_draft(draft_key(mock_interaction, COMMAND))

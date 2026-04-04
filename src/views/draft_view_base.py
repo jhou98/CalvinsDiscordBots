@@ -12,11 +12,13 @@ DraftKey = (user_id, channel_id, command_name)
   → one active draft per user per channel per command
   → a user can run /matorder and /rfi simultaneously in the same channel
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Callable
 
 import discord
 from discord.ext import tasks
@@ -25,19 +27,20 @@ from src.models.draft_base import DraftBase
 
 log = logging.getLogger(__name__)
 
-DRAFT_TTL_SECONDS = 86400      # 1 day
-SWEEP_INTERVAL_MINS = 120       # background sweep cadence
+DRAFT_TTL_SECONDS = 86400  # 1 day
+SWEEP_INTERVAL_MINS = 60  # background sweep cadence
 
 # (user_id, channel_id, command_name) — all strings to avoid snowflake overflow
 DraftKey = tuple[str, str, str]
 
 EmbedBuilder = Callable[[discord.Member, DraftBase], discord.Embed]
-TextBuilder  = Callable[[discord.Member, DraftBase], str]
+TextBuilder = Callable[[discord.Member, DraftBase], str]
 
 
 # ---------------------------------------------------------------------------
 # Expiry helpers
 # ---------------------------------------------------------------------------
+
 
 def is_expired(draft: DraftBase) -> bool:
     """Return True if the draft has lived longer than DRAFT_TTL_SECONDS."""
@@ -51,14 +54,12 @@ async def evict(store: dict, key: DraftKey) -> None:
     """
     draft = store.pop(key, None)
     if draft and draft.message:
-        try:
+        with contextlib.suppress(discord.NotFound, discord.HTTPException):
             await draft.message.edit(
                 content="⏱️ This request expired due to inactivity.",
                 embed=None,
                 view=None,
             )
-        except (discord.NotFound, discord.HTTPException):
-            pass  # Message deleted or uneditable — nothing to do
 
 
 def draft_key(interaction: discord.Interaction, command_name: str) -> DraftKey:
@@ -69,6 +70,7 @@ def draft_key(interaction: discord.Interaction, command_name: str) -> DraftKey:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _is_numeric(value: str) -> bool:
     try:
@@ -81,6 +83,7 @@ def _is_numeric(value: str) -> bool:
 # ---------------------------------------------------------------------------
 # SubmittedView — open to anyone in the channel, no timeout
 # ---------------------------------------------------------------------------
+
 
 class SubmittedView(discord.ui.View):
     """
@@ -106,6 +109,7 @@ class SubmittedView(discord.ui.View):
 # AddMaterialModal — shared by any command that has a materials list
 # ---------------------------------------------------------------------------
 
+
 class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
     materials_input = discord.ui.TextInput(
         label="Materials  (Name - Quantity, one per line)",
@@ -123,10 +127,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         view_cls: type,
     ):
         super().__init__()
-        self.draft_key      = draft_key
-        self.store          = store
+        self.draft_key = draft_key
+        self.store = store
         self.draft_embed_fn = draft_embed_fn
-        self.view_cls       = view_cls
+        self.view_cls = view_cls
 
     async def on_submit(self, interaction: discord.Interaction):
         from src.helpers.helpers import parse_materials
@@ -147,9 +151,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
             return
 
         material_list, parse_errors = parse_materials(self.materials_input.value)
-        non_numeric = [
-            f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)
-        ]
+        non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)]
 
         if parse_errors or non_numeric:
             error_lines = []
@@ -182,6 +184,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
 # make_select_then_modal
 # ---------------------------------------------------------------------------
 
+
 def make_select_then_modal(
     options: list[str],
     *,
@@ -208,9 +211,7 @@ def make_select_then_modal(
     if other_label not in all_options:
         all_options.append(other_label)
 
-    select_options = [
-        discord.SelectOption(label=opt, value=opt) for opt in all_options
-    ]
+    select_options = [discord.SelectOption(label=opt, value=opt) for opt in all_options]
 
     class SelectThenModalView(discord.ui.View):
         def __init__(self):
@@ -225,9 +226,7 @@ def make_select_then_modal(
             min_values=1,
             max_values=1,
         )
-        async def on_select(
-            self, interaction: discord.Interaction, select: discord.ui.Select
-        ):
+        async def on_select(self, interaction: discord.Interaction, select: discord.ui.Select):
             modal = await self.modal_factory(select.values[0])
             await interaction.response.send_modal(modal)
 
@@ -237,6 +236,7 @@ def make_select_then_modal(
 # ---------------------------------------------------------------------------
 # make_draft_view
 # ---------------------------------------------------------------------------
+
 
 def make_draft_view(
     store: dict,
@@ -311,9 +311,7 @@ def make_draft_view(
         for child in self_view.children:
             child.disabled = True
         await interaction.response.defer()
-        await interaction.message.edit(
-            content="🗑️ Request cancelled.", embed=None, view=self_view
-        )
+        await interaction.message.edit(content="🗑️ Request cancelled.", embed=None, view=self_view)
 
     # ------------------------------------------------------------------
     # Layout with material buttons (row 0: Add / Undo, row 1: Done / Cancel)
@@ -334,7 +332,9 @@ def make_draft_view(
                 return await _interaction_check(self, interaction)
 
             @discord.ui.button(label="➕ Add Material", style=discord.ButtonStyle.primary, row=0)
-            async def add_material(self, interaction: discord.Interaction, button: discord.ui.Button):
+            async def add_material(
+                self, interaction: discord.Interaction, button: discord.ui.Button
+            ):
                 if await self._check_expired(interaction):
                     return
                 if self.key not in store:
@@ -409,6 +409,7 @@ def make_draft_view(
 # SweepMixin
 # ---------------------------------------------------------------------------
 
+
 class SweepMixin:
     """
     Mixin for commands.Cog subclasses that own a draft store.
@@ -421,6 +422,7 @@ class SweepMixin:
     Usage in cog_unload:
         self._stop_sweep()
     """
+
     _store: dict
     _command_name: str
 

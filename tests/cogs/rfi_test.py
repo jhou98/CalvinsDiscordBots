@@ -3,10 +3,9 @@ Tests for cogs/rfi.py — the /rfi command.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
-import pytest
 
 from src.cogs.rfi import (
     COMMAND,
@@ -18,7 +17,6 @@ from src.cogs.rfi import (
     RfiStep1ModalOther,
     RfiStep2ContinueView,
     RfiStep2Modal,
-    _draft_embed,
     drafts,
 )
 from src.models.draft_rfi import DraftRfi
@@ -55,11 +53,14 @@ def _clear_drafts():
 # RfiStep1Modal (named impact)
 # ---------------------------------------------------------------------------
 
+
 class TestRfiStep1Modal:
     def setup_method(self):
         _clear_drafts()
 
-    def _make_modal(self, impact="Work stops", date="", requested_by="Jack", required_by="05/01/2026"):
+    def _make_modal(
+        self, impact="Work stops", date="", requested_by="Jack", required_by="05/01/2026"
+    ):
         modal = RfiStep1Modal(impact=impact)
         modal.date_requested = MagicMock(value=date)
         modal.requested_by = MagicMock(value=requested_by)
@@ -102,6 +103,7 @@ class TestRfiStep1Modal:
 # RfiStep1ModalOther (free-text impact)
 # ---------------------------------------------------------------------------
 
+
 class TestRfiStep1ModalOther:
     def setup_method(self):
         _clear_drafts()
@@ -127,6 +129,7 @@ class TestRfiStep1ModalOther:
 # ---------------------------------------------------------------------------
 # RfiStep2Modal
 # ---------------------------------------------------------------------------
+
 
 class TestRfiStep2Modal:
     def setup_method(self):
@@ -180,6 +183,7 @@ class TestRfiStep2Modal:
 # RfiStep2ContinueView
 # ---------------------------------------------------------------------------
 
+
 class TestRfiStep2ContinueView:
     def setup_method(self):
         _clear_drafts()
@@ -200,6 +204,7 @@ class TestRfiStep2ContinueView:
 # ---------------------------------------------------------------------------
 # RfiImpactSelectView
 # ---------------------------------------------------------------------------
+
 
 class TestRfiImpactSelectView:
     async def test_named_impact_returns_step1_modal(self):
@@ -224,6 +229,7 @@ class TestRfiImpactSelectView:
 # ---------------------------------------------------------------------------
 # DraftView — simple (no material buttons)
 # ---------------------------------------------------------------------------
+
 
 class TestRfiDraftViewDone:
     def setup_method(self):
@@ -264,6 +270,7 @@ class TestRfiDraftViewCancel:
 # Rfi cog
 # ---------------------------------------------------------------------------
 
+
 class TestRfiCog:
     def setup_method(self):
         _clear_drafts()
@@ -297,6 +304,7 @@ class TestRfiCog:
 # ---------------------------------------------------------------------------
 # RFI_IMPACT_OPTIONS constant
 # ---------------------------------------------------------------------------
+
 
 def test_rfi_impact_options_is_a_list():
     assert isinstance(RFI_IMPACT_OPTIONS, list)

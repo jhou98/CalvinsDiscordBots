@@ -1,5 +1,7 @@
 # Calvins Discord Bots 
 
+Making discord bots for my friend Calvin. 
+
 ## Local Setup
 1. Setup python and virtual env 
 2. Run `pip install -r requirements.txt` 
@@ -10,14 +12,19 @@
 
 ## Project Structure
 ```
+├── .github                           # Github settings 
 ├── src/
-│   └── cogs/                         # individual endpoints
-│   └── helpers/                      # shared helper functions
-│   └── models/                       # data models
-│   └── views/                        # shared views
+│   ├── cogs/                         # individual endpoints
+│   ├── helpers/                      # shared helper functions
+│   ├── models/                       # data models
+│   ├── views/                        # shared views
 |   └── main.py                       # entry point
 ├── tests/
-│   ├── conftest.py                   # Shared pytest fixtures
+│   └── conftest.py                   # Shared pytest fixtures
+├── .env_template                     # copy of .env without values     
+├── .gitignore                                            
+├── Makefile                     
+├── pyproject.toml                    # Project settings 
 └── requirements.txt
 ```
 Each subfolder has its own `README.md` which provides an overview and context.

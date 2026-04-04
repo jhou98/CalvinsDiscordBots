@@ -1,6 +1,7 @@
 """
 Data model for /rfi drafts.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

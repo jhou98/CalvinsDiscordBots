@@ -1,6 +1,7 @@
 """
 /matorder — Material Order command.
 """
+
 import logging
 
 import discord
@@ -32,13 +33,14 @@ drafts: dict[DraftKey, DraftMatOrder] = {}
 # Embed / plain-text builders
 # ---------------------------------------------------------------------------
 
+
 def _embed(user, draft: DraftMatOrder, *, title: str, color: discord.Color) -> discord.Embed:
     embed = discord.Embed(title=title, color=color)
     embed.add_field(name="📅 Date Requested", value=draft.date_requested, inline=True)
-    embed.add_field(name="🕐 Submitted At",   value=draft.submitted_at,   inline=True)
-    embed.add_field(name="👤 Requested By",   value=draft.requested_by,   inline=True)
-    embed.add_field(name="📆 Required Date",  value=draft.required_date,  inline=True)
-    embed.add_field(name="📞 Site Contact",   value=draft.site_contact,   inline=True)
+    embed.add_field(name="🕐 Submitted At", value=draft.submitted_at, inline=True)
+    embed.add_field(name="👤 Requested By", value=draft.requested_by, inline=True)
+    embed.add_field(name="📆 Required Date", value=draft.required_date, inline=True)
+    embed.add_field(name="📞 Site Contact", value=draft.site_contact, inline=True)
     if draft.delivery_notes:
         embed.add_field(name="📝 Delivery Notes", value=draft.delivery_notes, inline=False)
     embed.add_field(
@@ -86,6 +88,7 @@ DraftView = make_draft_view(
 # Modal
 # ---------------------------------------------------------------------------
 
+
 class MatOrderModal(discord.ui.Modal, title="Material Order"):
     date_requested = discord.ui.TextInput(
         label="Date Requested",
@@ -128,9 +131,7 @@ class MatOrderModal(discord.ui.Modal, title="Material Order"):
         try:
             req_date = resolve_date(self.required_date.value)
         except ValueError as e:
-            await interaction.response.send_message(
-                f"⚠️ Required date — {e}", ephemeral=True
-            )
+            await interaction.response.send_message(f"⚠️ Required date — {e}", ephemeral=True)
             return
 
         key = draft_key(interaction, COMMAND)
@@ -157,6 +158,7 @@ class MatOrderModal(discord.ui.Modal, title="Material Order"):
 # ---------------------------------------------------------------------------
 # Cog
 # ---------------------------------------------------------------------------
+
 
 class MatOrder(commands.Cog, SweepMixin):
     def __init__(self, bot: commands.Bot):

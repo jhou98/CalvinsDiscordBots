@@ -3,10 +3,9 @@ Tests for cogs/inspection_req.py — the /inspectionreq command.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
-import pytest
 
 from src.cogs.inspection_req import (
     COMMAND,
@@ -15,12 +14,10 @@ from src.cogs.inspection_req import (
     InspectionModalOther,
     InspectionReq,
     InspectionTypeSelectView,
-    _draft_embed,
-    _final_embed,
     drafts,
 )
 from src.models.draft_inspection import DraftInspection
-from src.views.draft_view_base import DRAFT_TTL_SECONDS, draft_key, is_expired
+from src.views.draft_view_base import DRAFT_TTL_SECONDS, draft_key
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,11 +48,19 @@ def _clear_drafts():
 # InspectionModal (named type)
 # ---------------------------------------------------------------------------
 
+
 class TestInspectionModal:
     def setup_method(self):
         _clear_drafts()
 
-    def _make_modal(self, inspection_type="Rough-in", date="", insp_date="04/01/2026", site="Bob — 555", am_pm="AM"):
+    def _make_modal(
+        self,
+        inspection_type="Rough-in",
+        date="",
+        insp_date="04/01/2026",
+        site="Bob — 555",
+        am_pm="AM",
+    ):
         modal = InspectionModal(inspection_type=inspection_type)
         modal.date_requested = MagicMock(value=date)
         modal.inspection_date = MagicMock(value=insp_date)
@@ -101,12 +106,14 @@ class TestInspectionModal:
         await self._make_modal(date="").on_submit(mock_interaction)
         draft = drafts[draft_key(mock_interaction, COMMAND)]
         import re
+
         assert re.match(r"\d{2}/\d{2}/\d{4}", draft.date_requested)
 
 
 # ---------------------------------------------------------------------------
 # InspectionModalOther (free-text type)
 # ---------------------------------------------------------------------------
+
 
 class TestInspectionModalOther:
     def setup_method(self):
@@ -134,6 +141,7 @@ class TestInspectionModalOther:
 # InspectionTypeSelectView
 # ---------------------------------------------------------------------------
 
+
 class TestInspectionTypeSelectView:
     async def test_named_type_returns_inspection_modal(self):
         view = InspectionTypeSelectView()
@@ -157,6 +165,7 @@ class TestInspectionTypeSelectView:
 # ---------------------------------------------------------------------------
 # InspectionReq cog
 # ---------------------------------------------------------------------------
+
 
 class TestInspectionReqCog:
     def setup_method(self):
@@ -192,6 +201,7 @@ class TestInspectionReqCog:
 # ---------------------------------------------------------------------------
 # INSPECTION_TYPES is easy to extend
 # ---------------------------------------------------------------------------
+
 
 def test_inspection_types_is_a_list():
     assert isinstance(INSPECTION_TYPES, list)

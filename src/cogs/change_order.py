@@ -34,6 +34,7 @@ drafts: dict[DraftKey, DraftChangeOrder] = {}
 # Embed / plain-text builders
 # ---------------------------------------------------------------------------
 
+
 def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
     return build_change_order_embed(
         user=user,
@@ -76,6 +77,7 @@ DraftView = make_draft_view(
 # Modal
 # ---------------------------------------------------------------------------
 
+
 class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
     date_requested = discord.ui.TextInput(
         label="Date Requested",
@@ -104,7 +106,10 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         except ValueError as e:
             log.warning(
                 "Date error for user %s (%s) in channel %s: %s",
-                interaction.user, interaction.user.id, interaction.channel_id, e,
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
             )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
@@ -112,9 +117,7 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         material_list: list[tuple[str, str]] = []
         if self.materials_input.value.strip():
             material_list, parse_errors = parse_materials(self.materials_input.value)
-            non_numeric = [
-                f"`{n} - {q}`" for n, q in material_list if not _is_numeric(q)
-            ]
+            non_numeric = [f"`{n} - {q}`" for n, q in material_list if not _is_numeric(q)]
             if parse_errors or non_numeric:
                 error_lines = []
                 if parse_errors:
@@ -128,7 +131,10 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
                     )
                 log.warning(
                     "Material errors on scope submit for user %s (%s): parse=%s non_numeric=%s",
-                    interaction.user, interaction.user.id, parse_errors, non_numeric,
+                    interaction.user,
+                    interaction.user.id,
+                    parse_errors,
+                    non_numeric,
                 )
                 await interaction.response.send_message(
                     "⚠️ Some material lines couldn't be added:\n\n"
@@ -161,6 +167,7 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
 # Cog
 # ---------------------------------------------------------------------------
 
+
 class ChangeOrder(commands.Cog, SweepMixin):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -178,7 +185,8 @@ class ChangeOrder(commands.Cog, SweepMixin):
         if existing and is_expired(existing):
             log.info(
                 "Lazy eviction on command entry for user %s in channel %s",
-                key[0], key[1],
+                key[0],
+                key[1],
             )
             await evict(drafts, key)
         if key in drafts:

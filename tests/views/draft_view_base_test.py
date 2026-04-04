@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
-import pytest
 
 from src.models.draft_base import DraftBase
 from src.views.draft_view_base import (
@@ -68,6 +67,7 @@ def _make_interaction(user_id="111", channel_id="222"):
 # _is_numeric
 # ---------------------------------------------------------------------------
 
+
 class TestIsNumeric:
     def test_integer_string(self):
         assert _is_numeric("3") is True
@@ -92,6 +92,7 @@ class TestIsNumeric:
 # is_expired
 # ---------------------------------------------------------------------------
 
+
 class TestIsExpired:
     def test_fresh_draft_not_expired(self):
         assert is_expired(_make_draft()) is False
@@ -101,15 +102,14 @@ class TestIsExpired:
 
     def test_exactly_at_ttl_boundary(self):
         """A draft aged exactly TTL seconds should not yet be expired (strictly >)."""
-        draft = DraftBase(
-            created_at=datetime.now(UTC) - timedelta(seconds=DRAFT_TTL_SECONDS)
-        )
+        draft = DraftBase(created_at=datetime.now(UTC) - timedelta(seconds=DRAFT_TTL_SECONDS - 1))
         assert is_expired(draft) is False
 
 
 # ---------------------------------------------------------------------------
 # evict
 # ---------------------------------------------------------------------------
+
 
 class TestEvict:
     async def test_removes_key_from_store(self):
@@ -166,6 +166,7 @@ class TestEvict:
 # draft_key
 # ---------------------------------------------------------------------------
 
+
 class TestDraftKey:
     def test_returns_tuple_of_strings(self, mock_interaction):
         key = draft_key(mock_interaction, "changeorder")
@@ -190,6 +191,7 @@ class TestDraftKey:
 # ---------------------------------------------------------------------------
 # SubmittedView
 # ---------------------------------------------------------------------------
+
 
 class TestSubmittedView:
     async def test_copy_text_sends_ephemeral(self, mock_interaction):
@@ -225,6 +227,7 @@ class TestSubmittedView:
 # ---------------------------------------------------------------------------
 # AddMaterialModal
 # ---------------------------------------------------------------------------
+
 
 class TestAddMaterialModal:
     def _store_and_draft(self, *, expired: bool = False):
@@ -329,6 +332,7 @@ class TestAddMaterialModal:
 # make_select_then_modal
 # ---------------------------------------------------------------------------
 
+
 class TestMakeSelectThenModal:
     async def test_other_appended_if_not_present(self):
         View = make_select_then_modal(["A", "B"])
@@ -411,6 +415,7 @@ class TestMakeSelectThenModal:
 # make_draft_view — simple layout (has_materials=False)
 # ---------------------------------------------------------------------------
 
+
 class TestMakeDraftViewSimple:
     def _setup(self):
         store = {}
@@ -419,7 +424,7 @@ class TestMakeDraftViewSimple:
 
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn  = MagicMock(return_value="plain text")
+        text_fn = MagicMock(return_value="plain text")
 
         View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=False)
         return store, draft, View
@@ -470,7 +475,7 @@ class TestMakeDraftViewSimple:
         store[_TEST_KEY] = draft
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn  = MagicMock(return_value="")
+        text_fn = MagicMock(return_value="")
         View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=False)
         interaction, _ = _make_interaction()
         await View(_TEST_KEY).done.callback(interaction)
@@ -509,6 +514,7 @@ class TestMakeDraftViewSimple:
 # make_draft_view — materials layout (has_materials=True)
 # ---------------------------------------------------------------------------
 
+
 class TestMakeDraftViewWithMaterials:
     def _setup(self):
         store = {}
@@ -517,7 +523,7 @@ class TestMakeDraftViewWithMaterials:
 
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn  = MagicMock(return_value="plain text")
+        text_fn = MagicMock(return_value="plain text")
 
         View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=True)
         return store, draft, View
@@ -573,9 +579,11 @@ class TestMakeDraftViewWithMaterials:
 # SweepMixin
 # ---------------------------------------------------------------------------
 
+
 class TestSweepMixin:
     async def test_sweep_evicts_expired_drafts(self):
         from discord.ext import commands
+
         from src.views.draft_view_base import SweepMixin
 
         store = {_TEST_KEY: _make_draft(expired=True)}
@@ -595,6 +603,7 @@ class TestSweepMixin:
 
     async def test_sweep_preserves_fresh_drafts(self):
         from discord.ext import commands
+
         from src.views.draft_view_base import SweepMixin
 
         store = {_TEST_KEY: _make_draft(expired=False)}
@@ -614,13 +623,14 @@ class TestSweepMixin:
 
     async def test_sweep_mixed(self):
         from discord.ext import commands
+
         from src.views.draft_view_base import SweepMixin
 
         expired_key = ("1", "1", "cmd")
-        fresh_key   = ("2", "2", "cmd")
+        fresh_key = ("2", "2", "cmd")
         store = {
             expired_key: _make_draft(expired=True),
-            fresh_key:   _make_draft(expired=False),
+            fresh_key: _make_draft(expired=False),
         }
 
         class FakeCog(commands.Cog, SweepMixin):

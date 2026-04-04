@@ -1,6 +1,7 @@
 """
 Data model for /matorder drafts.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

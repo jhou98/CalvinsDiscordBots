@@ -12,6 +12,7 @@ Flow:
 To add or rename impact options, edit RFI_IMPACT_OPTIONS below.
 "Other" (free-text) is always appended automatically.
 """
+
 import logging
 
 import discord
@@ -50,15 +51,16 @@ drafts: dict[DraftKey, DraftRfi] = {}
 # Embed / plain-text builders
 # ---------------------------------------------------------------------------
 
+
 def _embed(user, draft: DraftRfi, *, title: str, color: discord.Color) -> discord.Embed:
     embed = discord.Embed(title=title, color=color)
     embed.add_field(name="📅 Date Requested", value=draft.date_requested, inline=True)
-    embed.add_field(name="🕐 Submitted At",   value=draft.submitted_at,   inline=True)
-    embed.add_field(name="👤 Requested By",   value=draft.requested_by,   inline=True)
-    embed.add_field(name="📆 Required By",    value=draft.required_by,    inline=True)
-    embed.add_field(name="⚡ Impact",          value=draft.impact,         inline=True)
-    embed.add_field(name="❓ Question",        value=draft.questions,      inline=False)
-    embed.add_field(name="⚠️ Issue",           value=draft.issues,         inline=False)
+    embed.add_field(name="🕐 Submitted At", value=draft.submitted_at, inline=True)
+    embed.add_field(name="👤 Requested By", value=draft.requested_by, inline=True)
+    embed.add_field(name="📆 Required By", value=draft.required_by, inline=True)
+    embed.add_field(name="⚡ Impact", value=draft.impact, inline=True)
+    embed.add_field(name="❓ Question", value=draft.questions, inline=False)
+    embed.add_field(name="⚠️ Issue", value=draft.issues, inline=False)
     if draft.proposed_solution:
         embed.add_field(name="💡 Proposed Solution", value=draft.proposed_solution, inline=False)
     embed.set_footer(text="RFI System")
@@ -101,6 +103,7 @@ DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_
 # on the already-created draft, then posts the draft embed.
 # ---------------------------------------------------------------------------
 
+
 class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
     questions = discord.ui.TextInput(
         label="Question (1–2 sentences)",
@@ -135,8 +138,8 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
                 "⚠️ Draft expired. Please run `/rfi` again.", ephemeral=True
             )
             return
-        draft.questions         = self.questions.value.strip()
-        draft.issues            = self.issues.value.strip()
+        draft.questions = self.questions.value.strip()
+        draft.issues = self.issues.value.strip()
         draft.proposed_solution = self.proposed_solution.value.strip()
 
         view = DraftView(self.key)
@@ -146,7 +149,7 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
             view=view,
         )
         msg = await interaction.original_response()
-        view.message  = msg
+        view.message = msg
         draft.message = msg
 
 
@@ -156,6 +159,7 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
 # Step 1 posts an ephemeral "Continue" button instead. Clicking it opens
 # Step 2 as a component interaction, which IS allowed to send_modal.
 # ---------------------------------------------------------------------------
+
 
 class RfiStep2ContinueView(discord.ui.View):
     def __init__(self, key: DraftKey):
@@ -184,6 +188,7 @@ class RfiStep2ContinueView(discord.ui.View):
 #   RfiStep1Modal       → impact came from the select menu (known value)
 #   RfiStep1ModalOther  → "Other" selected; adds a free-text impact field
 # ---------------------------------------------------------------------------
+
 
 class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
     date_requested = discord.ui.TextInput(
@@ -218,9 +223,7 @@ class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
         try:
             req_by = resolve_date(self.required_by.value)
         except ValueError as e:
-            await interaction.response.send_message(
-                f"⚠️ Required by date — {e}", ephemeral=True
-            )
+            await interaction.response.send_message(f"⚠️ Required by date — {e}", ephemeral=True)
             return
 
         key = draft_key(interaction, COMMAND)
@@ -264,6 +267,7 @@ class RfiStep1ModalOther(_RfiStep1ModalBase):
 # Select menu — shown first (ephemeral) so the user picks an impact level
 # ---------------------------------------------------------------------------
 
+
 class RfiImpactSelectView(
     make_select_then_modal(
         RFI_IMPACT_OPTIONS,
@@ -280,6 +284,7 @@ class RfiImpactSelectView(
 # ---------------------------------------------------------------------------
 # Cog
 # ---------------------------------------------------------------------------
+
 
 class Rfi(commands.Cog, SweepMixin):
     def __init__(self, bot: commands.Bot):

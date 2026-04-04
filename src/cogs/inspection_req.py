@@ -4,6 +4,7 @@
 To add or rename inspection types, edit INSPECTION_TYPES below.
 "Other" is always appended automatically — no other changes needed.
 """
+
 import logging
 
 import discord
@@ -44,15 +45,16 @@ drafts: dict[DraftKey, DraftInspection] = {}
 # Embed / plain-text builders
 # ---------------------------------------------------------------------------
 
+
 def _embed(user, draft: DraftInspection, *, title: str, color: discord.Color) -> discord.Embed:
     embed = discord.Embed(title=title, color=color)
-    embed.add_field(name="📅 Date Requested",  value=draft.date_requested,  inline=True)
-    embed.add_field(name="🕐 Submitted At",     value=draft.submitted_at,    inline=True)
-    embed.add_field(name="👤 Submitted By",     value=user.mention,          inline=True)
-    embed.add_field(name="📆 Inspection Date",  value=draft.inspection_date, inline=True)
-    embed.add_field(name="🔍 Inspection Type",  value=draft.inspection_type, inline=True)
-    embed.add_field(name="🌅 AM / PM",          value=draft.am_pm,           inline=True)
-    embed.add_field(name="📞 Site Contact",     value=draft.site_contact,    inline=False)
+    embed.add_field(name="📅 Date Requested", value=draft.date_requested, inline=True)
+    embed.add_field(name="🕐 Submitted At", value=draft.submitted_at, inline=True)
+    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
+    embed.add_field(name="📆 Inspection Date", value=draft.inspection_date, inline=True)
+    embed.add_field(name="🔍 Inspection Type", value=draft.inspection_type, inline=True)
+    embed.add_field(name="🌅 AM / PM", value=draft.am_pm, inline=True)
+    embed.add_field(name="📞 Site Contact", value=draft.site_contact, inline=False)
     embed.set_footer(text="Inspection Request System")
     return embed
 
@@ -62,19 +64,23 @@ def _draft_embed(user, draft: DraftInspection) -> discord.Embed:
 
 
 def _final_embed(user, draft: DraftInspection) -> discord.Embed:
-    return _embed(user, draft, title="📋 Inspection Request — Submitted", color=discord.Color.green())
+    return _embed(
+        user, draft, title="📋 Inspection Request — Submitted", color=discord.Color.green()
+    )
 
 
 def _plain_text(user, draft: DraftInspection) -> str:
-    return "\n".join([
-        "INSPECTION REQUEST",
-        f"Date Requested:  {draft.date_requested}",
-        f"Submitted By:    {user.display_name}",
-        f"Inspection Date: {draft.inspection_date}",
-        f"Type:            {draft.inspection_type}",
-        f"AM / PM:         {draft.am_pm}",
-        f"Site Contact:    {draft.site_contact}",
-    ])
+    return "\n".join(
+        [
+            "INSPECTION REQUEST",
+            f"Date Requested:  {draft.date_requested}",
+            f"Submitted By:    {user.display_name}",
+            f"Inspection Date: {draft.inspection_date}",
+            f"Type:            {draft.inspection_type}",
+            f"AM / PM:         {draft.am_pm}",
+            f"Site Contact:    {draft.site_contact}",
+        ]
+    )
 
 
 DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_text)
@@ -88,6 +94,7 @@ DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_
 #   - InspectionModal        → type came from the select menu (known value)
 #   - InspectionModalOther   → "Other" selected; adds a free-text type field
 # ---------------------------------------------------------------------------
+
 
 class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
     inspection_date = discord.ui.TextInput(
@@ -128,9 +135,7 @@ class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
         try:
             insp_date = resolve_date(self.inspection_date.value)
         except ValueError as e:
-            await interaction.response.send_message(
-                f"⚠️ Inspection date — {e}", ephemeral=True
-            )
+            await interaction.response.send_message(f"⚠️ Inspection date — {e}", ephemeral=True)
             return
 
         key = draft_key(interaction, COMMAND)
@@ -179,6 +184,7 @@ class InspectionModalOther(_InspectionModalBase):
 # Select menu — shown first (ephemeral) so the user picks an inspection type
 # ---------------------------------------------------------------------------
 
+
 class InspectionTypeSelectView(
     make_select_then_modal(
         INSPECTION_TYPES,
@@ -195,6 +201,7 @@ class InspectionTypeSelectView(
 # ---------------------------------------------------------------------------
 # Cog
 # ---------------------------------------------------------------------------
+
 
 class InspectionReq(commands.Cog, SweepMixin):
     def __init__(self, bot: commands.Bot):

@@ -3,17 +3,15 @@ Tests for cogs/mat_order.py — the /matorder command.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
-import pytest
 
 from src.cogs.mat_order import (
     COMMAND,
     DraftView,
     MatOrder,
     MatOrderModal,
-    _draft_embed,
     drafts,
 )
 from src.models.draft_mat_order import DraftMatOrder
@@ -47,6 +45,7 @@ def _clear_drafts():
 # ---------------------------------------------------------------------------
 # MatOrderModal
 # ---------------------------------------------------------------------------
+
 
 class TestMatOrderModal:
     def setup_method(self):
@@ -115,6 +114,7 @@ class TestMatOrderModal:
 # DraftView — material buttons
 # ---------------------------------------------------------------------------
 
+
 class TestMatOrderDraftViewUndoLast:
     def setup_method(self):
         _clear_drafts()
@@ -161,6 +161,7 @@ class TestMatOrderDraftViewDone:
 # MatOrder cog
 # ---------------------------------------------------------------------------
 
+
 class TestMatOrderCog:
     def setup_method(self):
         _clear_drafts()
@@ -183,8 +184,9 @@ class TestMatOrderCog:
     async def test_different_command_same_channel_allowed(self, mock_interaction):
         """A matorder and changeorder draft can coexist in the same channel."""
         co_key = (str(mock_interaction.user.id), str(mock_interaction.channel_id), "changeorder")
-        from src.models.draft_change_order import DraftChangeOrder
         import src.cogs.change_order as co_mod
+        from src.models.draft_change_order import DraftChangeOrder
+
         co_mod.drafts[co_key] = DraftChangeOrder(date="01/01/2025", submitted_at="x", scope="s")
         cog = MatOrder(MagicMock())
         cog._stop_sweep()
