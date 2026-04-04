@@ -13,12 +13,11 @@ from src.cogs.mat_order import (
     DraftView,
     MatOrder,
     MatOrderModal,
-    # SubmittedView,
     _draft_embed,
     drafts,
 )
 from src.models.draft_mat_order import DraftMatOrder
-from src.views.draft_view_base import DRAFT_TTL_SECONDS, draft_key
+from src.views.draft_view_base import DRAFT_TTL_SECONDS, SubmittedView, draft_key
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -155,7 +154,7 @@ class TestMatOrderDraftViewDone:
         drafts[_TEST_KEY].materials = [("Conduit", "10")]
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        # assert isinstance(mock_message.edit.call_args.kwargs.get("view"), SubmittedView)
+        assert isinstance(mock_message.edit.call_args.kwargs.get("view"), SubmittedView)
 
 
 # ---------------------------------------------------------------------------

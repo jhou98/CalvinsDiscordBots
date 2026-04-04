@@ -1,25 +1,102 @@
 # Cogs README
 
-Cogs are Discord bot modules, each containing one slash command. The cog imports shared helpers from `helpers/`.
+Cogs are Discord bot modules, each containing one slash command. All cogs import shared helpers from `helpers/`, models from `models/`, and view infrastructure from `views/`.
 
-## `/changeorder` — Multi-Step Flow 
+## `/changeorder`
+
+**Flow:** Modal → Draft embed with buttons
 
 1. User runs `/changeorder`
    - If the user already has an active draft in this channel, an ephemeral error is returned
-2. **Step 1 modal** collects:
+2. A modal opens with three fields:
    - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
    - **Scope Added** — freeform description of work being added
-   - **Materials** — freeform multiline text for adding multiple materials (name + numeric quantity, one per line separated by " - ")
+   - **Materials** — optional bulk entry upfront (Name - Quantity, one per line)
 3. A draft embed is posted with four buttons:
-   - ➕ **Add Material** — opens a modal to add multiple material (name + numeric quantity, one per line separated by " - ")
+   - ➕ **Add Material** — opens a modal to add one or more materials (Name - Quantity, one per line)
    - ↩️ **Undo Last** — removes the most recently added material
-   - ✅ **Done** — finalizes the draft, posts the submitted embed, disables all buttons except **Copy Text**
-   - 🗑️ **Cancel** — discards the draft, disables all buttons4. Once submitted, a **Copy Text** button remains active so anyone in the channel can copy a plain-text version of the change order
-5. Only the user who created the draft can interact with the draft buttons
-6. Draft expires after **1 day** of inactivity
+   - ✅ **Done** — requires at least one material; finalises and posts the submitted embed
+   - 🗑️ **Cancel** — discards the draft
+
+---
+
+## `/inspectionreq`
+
+**Flow:** Ephemeral select → Modal → Draft embed with buttons
+
+1. User runs `/inspectionreq`
+   - If the user already has an active draft in this channel, an ephemeral error is returned
+2. An ephemeral **Select menu** appears for the user to pick an inspection type
+   - Selecting a named type opens a 4-field modal
+   - Selecting **Other** opens the same modal with an extra free-text type field
+3. The modal collects:
+   - **Inspection Date** — MM/DD/YYYY
+   - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
+   - **Site Contact** — name and phone number
+   - **AM / PM Preference**
+   - **Inspection Type (describe)** — only shown when Other is selected
+4. A draft embed is posted with **Done** and **Cancel** buttons
+
+To add or rename inspection types, edit `INSPECTION_TYPES` at the top of `inspection_req.py`. `Other` is always appended automatically.
+
+---
+
+## `/matorder`
+
+**Flow:** Modal → Draft embed with buttons
+
+1. User runs `/matorder`
+   - If the user already has an active draft in this channel, an ephemeral error is returned
+2. A modal opens with five fields:
+   - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
+   - **Requested By** — name of the person requesting
+   - **Required Date** — MM/DD/YYYY
+   - **Site Contact w/ Phone** — name and phone number
+   - **Delivery Notes** — optional freeform notes
+3. A draft embed is posted with four buttons:
+   - ➕ **Add Material** — opens a modal to add one or more materials (Name - Quantity, one per line)
+   - ↩️ **Undo Last** — removes the most recently added material
+   - ✅ **Done** — requires at least one material; finalises and posts the submitted embed
+   - 🗑️ **Cancel** — discards the draft
+
+---
+
+## `/rfi` (Request for Information)
+
+**Flow:** Ephemeral select → Step 1 modal → Ephemeral continue button → Step 2 modal → Draft embed with buttons
+
+RFI has 7 fields which exceeds Discord's 5-field modal limit, and uses a select menu for impact level, so the flow is split across two modals.
+
+1. User runs `/rfi`
+   - If the user already has an active draft in this channel, an ephemeral error is returned
+2. An ephemeral **Select menu** appears for the user to pick an impact level
+   - Selecting a named level opens Step 1 modal
+   - Selecting **Other** opens Step 1 with an extra free-text impact field
+3. **Step 1 modal** collects:
+   - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
+   - **Requested By** — name of person requesting
+   - **Required By** — MM/DD/YYYY
+   - **Impact (describe)** — only shown when Other is selected
+4. An ephemeral **Continue →** button appears (Discord does not allow a modal to open another modal directly)
+5. **Step 2 modal** collects:
+   - **Question** — 1–2 sentences, clear and specific
+   - **Issue / Background** — why this is being asked
+   - **Proposed Solution** — optional
+6. A draft embed is posted with **Done** and **Cancel** buttons
+
+To add or rename impact levels, edit `RFI_IMPACT_OPTIONS` at the top of `rfi.py`. `Other` is always appended automatically.
+
+---
+
+## Shared behaviours (all commands)
+
+- Only the user who created the draft can interact with its buttons
+- Drafts expire after **1 day** of inactivity
+- A background sweep runs every **60 minutes** to evict stale drafts and update their Discord messages
+- Lazy expiry checks also run on every button press and on command entry
+- A user can have one active draft **per command per channel** simultaneously (e.g. `/matorder` and `/rfi` can both be active in the same channel)
+- All submitted embeds include a **⚡ Copy Text** button open to anyone in the channel
 
 ### Draft Storage
-- Drafts are stored **in-memory** in a `dict` keyed by `(user_id, channel_id)`
-- A user can have active drafts across multiple channels simultaneously
+- Drafts are stored **in-memory** in a `dict` keyed by `(user_id, channel_id, command_name)`
 - Drafts do **not** persist across bot restarts
-- A background sweep runs every 1 hours to evict stale drafts and update their Discord messages

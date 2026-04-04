@@ -26,7 +26,7 @@ from src.models.draft_base import DraftBase
 log = logging.getLogger(__name__)
 
 DRAFT_TTL_SECONDS = 86400      # 1 day
-SWEEP_INTERVAL_MINS = 60       # background sweep cadence
+SWEEP_INTERVAL_MINS = 120       # background sweep cadence
 
 # (user_id, channel_id, command_name) — all strings to avoid snowflake overflow
 DraftKey = tuple[str, str, str]

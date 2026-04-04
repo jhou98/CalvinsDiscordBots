@@ -151,13 +151,38 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
 
 
 # ---------------------------------------------------------------------------
+# Step 2 continue button — bridges the modal→modal gap.
+# Discord forbids responding to a modal submission with another modal, so
+# Step 1 posts an ephemeral "Continue" button instead. Clicking it opens
+# Step 2 as a component interaction, which IS allowed to send_modal.
+# ---------------------------------------------------------------------------
+
+class RfiStep2ContinueView(discord.ui.View):
+    def __init__(self, key: DraftKey):
+        super().__init__(timeout=300)  # 5 min to click Continue
+        self.key = key
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary)
+    async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        draft = drafts.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/rfi` again.", ephemeral=True
+            )
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.send_modal(RfiStep2Modal(self.key))
+
+
+# ---------------------------------------------------------------------------
 # Step 1 modals — identifiers + impact
 # Shown after the impact select menu. Collects date_requested, requested_by,
-# required_by, then chains to Step 2.
+# required_by, then posts an ephemeral Continue button that opens Step 2.
 #
 # Two concrete subclasses:
-#   _RfiStep1Modal       → impact came from the select menu (known value)
-#   _RfiStep1ModalOther  → "Other" selected; adds a free-text impact field
+#   RfiStep1Modal       → impact came from the select menu (known value)
+#   RfiStep1ModalOther  → "Other" selected; adds a free-text impact field
 # ---------------------------------------------------------------------------
 
 class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
@@ -184,7 +209,7 @@ class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
         super().__init__()
         self._impact = impact
 
-    async def _create_draft_and_chain(self, interaction: discord.Interaction, impact: str):
+    async def _create_draft_and_continue(self, interaction: discord.Interaction, impact: str):
         try:
             date_req = resolve_date(self.date_requested.value)
         except ValueError as e:
@@ -206,14 +231,19 @@ class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
             impact=impact,
             submitted_at=discord_timestamp(),
         )
-        await interaction.response.send_modal(RfiStep2Modal(key))
+        # Can't send_modal from a modal on_submit — post an ephemeral button instead
+        await interaction.response.send_message(
+            content="✅ Step 1 saved! Click **Continue →** to add the question details.",
+            view=RfiStep2ContinueView(key),
+            ephemeral=True,
+        )
 
 
 class RfiStep1Modal(_RfiStep1ModalBase):
     """Used when a named impact level is selected from the menu."""
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft_and_chain(interaction, self._impact)
+        await self._create_draft_and_continue(interaction, self._impact)
 
 
 class RfiStep1ModalOther(_RfiStep1ModalBase):
@@ -227,7 +257,7 @@ class RfiStep1ModalOther(_RfiStep1ModalBase):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft_and_chain(interaction, self.impact_other.value.strip())
+        await self._create_draft_and_continue(interaction, self.impact_other.value.strip())
 
 
 # ---------------------------------------------------------------------------

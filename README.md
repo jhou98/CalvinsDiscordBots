@@ -11,19 +11,13 @@
 ## Project Structure
 ```
 ├── src/
-│   └── cogs/
-│       └── change_order.py           # /changeorder 
-│   └── helpers/
-│       └── helpers.py                # Shared utilities
-│   └── models/
-│       └── draft_change_order.py     # Data model for draft change orders
+│   └── cogs/                         # individual endpoints
+│   └── helpers/                      # shared helper functions
+│   └── models/                       # data models
+│   └── views/                        # shared views
 |   └── main.py                       # entry point
 ├── tests/
 │   ├── conftest.py                   # Shared pytest fixtures
-│   └── cogs/
-│       ├── change_order_test.py
-│   └── helpers/
-│       └── helpers_test.py            
 └── requirements.txt
 ```
 Each subfolder has its own `README.md` which provides an overview and context.
@@ -32,3 +26,6 @@ Each subfolder has its own `README.md` which provides an overview and context.
 | Command | Description |
 |---|---|
 | `/changeorder` | Submit a change order with multi-step material entry and draft editing |
+| `/inspectionreq` | Submit an inspection request |
+| `/matorder` | Submit a material order with multi-step material entry and editing |
+| `/rfi` | Submit a request for information (RFI) with multi-modal steps and drop-downs |

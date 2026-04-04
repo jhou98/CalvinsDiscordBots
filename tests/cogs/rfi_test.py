@@ -16,6 +16,7 @@ from src.cogs.rfi import (
     RfiImpactSelectView,
     RfiStep1Modal,
     RfiStep1ModalOther,
+    RfiStep2ContinueView,
     RfiStep2Modal,
     _draft_embed,
     drafts,
@@ -73,10 +74,16 @@ class TestRfiStep1Modal:
         await self._make_modal(impact="Minor").on_submit(mock_interaction)
         assert drafts[draft_key(mock_interaction, COMMAND)].impact == "Minor"
 
-    async def test_chains_to_step2_modal(self, mock_interaction):
+    async def test_posts_continue_button(self, mock_interaction):
+        """Step 1 can't chain to a modal directly — posts an ephemeral Continue button."""
         await self._make_modal().on_submit(mock_interaction)
-        mock_interaction.response.send_modal.assert_called_once()
-        assert isinstance(mock_interaction.response.send_modal.call_args.args[0], RfiStep2Modal)
+        kwargs = mock_interaction.response.send_message.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        assert isinstance(kwargs.get("view"), RfiStep2ContinueView)
+
+    async def test_does_not_call_send_modal(self, mock_interaction):
+        await self._make_modal().on_submit(mock_interaction)
+        mock_interaction.response.send_modal.assert_not_called()
 
     async def test_invalid_date_sends_ephemeral(self, mock_interaction):
         await self._make_modal(date="bad").on_submit(mock_interaction)
@@ -111,9 +118,10 @@ class TestRfiStep1ModalOther:
         await self._make_modal("Custom impact").on_submit(mock_interaction)
         assert drafts[draft_key(mock_interaction, COMMAND)].impact == "Custom impact"
 
-    async def test_chains_to_step2(self, mock_interaction):
+    async def test_posts_continue_button(self, mock_interaction):
         await self._make_modal().on_submit(mock_interaction)
-        mock_interaction.response.send_modal.assert_called_once()
+        kwargs = mock_interaction.response.send_message.call_args.kwargs
+        assert isinstance(kwargs.get("view"), RfiStep2ContinueView)
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +177,27 @@ class TestRfiStep2Modal:
 
 
 # ---------------------------------------------------------------------------
+# RfiStep2ContinueView
+# ---------------------------------------------------------------------------
+
+class TestRfiStep2ContinueView:
+    def setup_method(self):
+        _clear_drafts()
+
+    async def test_continue_opens_step2_modal(self, mock_interaction):
+        _seed_draft()
+        view = RfiStep2ContinueView(_TEST_KEY)
+        await view.continue_to_step2.callback(mock_interaction)
+        mock_interaction.response.send_modal.assert_called_once()
+        assert isinstance(mock_interaction.response.send_modal.call_args.args[0], RfiStep2Modal)
+
+    async def test_continue_missing_draft_sends_ephemeral(self, mock_interaction):
+        view = RfiStep2ContinueView(_TEST_KEY)
+        await view.continue_to_step2.callback(mock_interaction)
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+
+# ---------------------------------------------------------------------------
 # RfiImpactSelectView
 # ---------------------------------------------------------------------------
 
@@ -183,7 +212,7 @@ class TestRfiImpactSelectView:
         modal = await view.modal_factory("Other")
         assert isinstance(modal, RfiStep1ModalOther)
 
-    def test_all_impact_options_in_select(self):
+    async def test_all_impact_options_in_select(self):
         view = RfiImpactSelectView()
         select = next(c for c in view.children if isinstance(c, discord.ui.Select))
         option_values = [o.value for o in select.options]

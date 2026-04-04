@@ -145,7 +145,7 @@ class TestInspectionTypeSelectView:
         modal = await view.modal_factory("Other")
         assert isinstance(modal, InspectionModalOther)
 
-    def test_all_inspection_types_present_in_select(self):
+    async def test_all_inspection_types_present_in_select(self):
         view = InspectionTypeSelectView()
         select = next(c for c in view.children if isinstance(c, discord.ui.Select))
         option_values = [o.value for o in select.options]

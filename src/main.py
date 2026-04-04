@@ -35,7 +35,7 @@ class CalvinBot(commands.Bot):
             await self.load_extension("src.cogs.change_order")
             await self.load_extension("src.cogs.inspection_req")
             await self.load_extension("src.cogs.mat_order")
-            # await self.load_extension("src.cogs.rfi")
+            await self.load_extension("src.cogs.rfi")
             await self.tree.sync()
             log.info("-- Setup hook complete --")
         except Exception:
