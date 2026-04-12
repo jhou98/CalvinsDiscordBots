@@ -128,6 +128,11 @@ class MatOrderStep2Modal(discord.ui.Modal, title="Material Order — Step 2 of 2
     async def on_submit(self, interaction: discord.Interaction):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on step 2 submit for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/matorder` again.", ephemeral=True
             )
@@ -161,6 +166,7 @@ class MatOrderStep2Modal(discord.ui.Modal, title="Material Order — Step 2 of 2
         msg = await interaction.original_response()
         view.message = msg
         draft.message = msg
+        log.info("Material order draft created for user %s in channel %s", self.key[0], self.key[1])
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +183,11 @@ class MatOrderStep2ContinueView(discord.ui.View):
     async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on continue click for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/matorder` again.", ephemeral=True
             )
@@ -227,16 +238,36 @@ class MatOrderStep1Modal(discord.ui.Modal, title="Material Order — Step 1 of 2
         try:
             date_req = resolve_date(self.date_requested.value)
         except ValueError as e:
+            log.warning(
+                "Date requested error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
         try:
             req_date = resolve_date(self.required_date.value)
         except ValueError as e:
+            log.warning(
+                "Required date error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ Required date — {e}", ephemeral=True)
             return
 
         phone = validate_phone(self.site_contact_phone.value)
         if phone is None:
+            log.warning(
+                "Phone validation failed for user %s (%s) in channel %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+            )
             await interaction.response.send_message(
                 "⚠️ Invalid phone number. Please include 7–15 digits "
                 "(e.g. `555-867-5309`, `(555) 867-5309`).",

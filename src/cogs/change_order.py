@@ -185,6 +185,11 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         msg = await interaction.original_response()
         view.message = msg
         draft.message = msg
+        log.info(
+            "Change order draft created for user %s in channel %s",
+            key[0],
+            key[1],
+        )
 
 
 # ---------------------------------------------------------------------------

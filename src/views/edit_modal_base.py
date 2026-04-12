@@ -7,10 +7,14 @@ EditModalBase, defines its TextInput fields, and implements _pre_fill and _apply
 
 from __future__ import annotations
 
+import logging
+
 import discord
 
 from src.models.draft_base import DraftBase
 from src.views.draft_view_base import DraftKey, EmbedBuilder
+
+log = logging.getLogger(__name__)
 
 
 class EditModalBase(discord.ui.Modal):
@@ -40,6 +44,7 @@ class EditModalBase(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         draft = self.store.get(self.key)
         if not draft:
+            log.error("Draft not found on edit submit for key %s", self.key)
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run the command again.", ephemeral=True
             )
@@ -47,6 +52,7 @@ class EditModalBase(discord.ui.Modal):
 
         error = self._apply(draft)
         if error:
+            log.warning("Edit validation failed for key %s: %s", self.key, error)
             await interaction.response.send_message(error, ephemeral=True)
             return
 

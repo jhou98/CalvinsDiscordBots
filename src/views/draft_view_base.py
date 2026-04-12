@@ -153,6 +153,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
 
         draft = self.store.get(self.draft_key)
         if not draft:
+            log.error("Draft not found on add material for key %s", self.draft_key)
             await interaction.response.send_message(
                 "⚠️ Your draft expired. Please run the command again.",
                 ephemeral=True,
@@ -168,6 +169,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
 
         material_list, error_msg = validate_materials(self.materials_input.value)
         if error_msg:
+            log.warning("Material validation failed for key %s", self.draft_key)
             await interaction.response.send_message(error_msg, ephemeral=True)
             return
 
@@ -292,6 +294,7 @@ def make_draft_view(
             return
         draft = store.get(self_view.key)
         if not draft:
+            log.error("Draft not found on submit for key %s", self_view.key)
             await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
             return
         if require_materials and not getattr(draft, "materials", None):
@@ -308,6 +311,12 @@ def make_draft_view(
             embed=final_embed_fn(interaction.user, draft),
             view=SubmittedView(plain_text_fn(interaction.user, draft)),
         )
+        log.info(
+            "%s submitted by user %s in channel %s",
+            command_name,
+            self_view.key[0],
+            self_view.key[1],
+        )
 
     async def _cancel(self_view, interaction: discord.Interaction):
         if await _check_expired(self_view, interaction):
@@ -317,6 +326,12 @@ def make_draft_view(
             child.disabled = True
         await interaction.response.defer()
         await interaction.message.edit(content="🗑️ Request cancelled.", embed=None, view=self_view)
+        log.info(
+            "%s cancelled by user %s in channel %s",
+            command_name,
+            self_view.key[0],
+            self_view.key[1],
+        )
 
     # ------------------------------------------------------------------
     # Edit button helper — shared by both layouts when edit_modal_factory
@@ -337,6 +352,7 @@ def make_draft_view(
                 return
             draft = store.get(self_view.key)
             if not draft:
+                log.error("Draft not found on edit for key %s", self_view.key)
                 await interaction.response.send_message(
                     "⚠️ Draft not found.", ephemeral=True
                 )

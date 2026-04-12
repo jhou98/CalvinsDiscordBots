@@ -188,6 +188,11 @@ class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Conta
     async def on_submit(self, interaction: discord.Interaction):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on step 2 submit for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
             )
@@ -195,6 +200,11 @@ class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Conta
 
         phone = validate_phone(self.site_contact_phone.value)
         if phone is None:
+            log.warning(
+                "Phone validation failed for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Invalid phone number. Please include 7–15 digits "
                 "(e.g. `555-867-5309`, `(555) 867-5309`).",
@@ -214,6 +224,12 @@ class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Conta
         msg = await interaction.original_response()
         view.message = msg
         draft.message = msg
+        log.info(
+            "Inspection request draft created for user %s in channel %s (type=%s)",
+            self.key[0],
+            self.key[1],
+            draft.inspection_type,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +248,11 @@ class InspectionStep2ContinueView(discord.ui.View):
     async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on continue click for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
             )
@@ -281,11 +302,25 @@ class _InspectionStep1Base(discord.ui.Modal, title="Inspection Request — Step 
         try:
             date_req = resolve_date(self.date_requested.value)
         except ValueError as e:
+            log.warning(
+                "Date requested error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
         try:
             insp_date = resolve_date(self.inspection_date.value)
         except ValueError as e:
+            log.warning(
+                "Inspection date error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ Inspection date — {e}", ephemeral=True)
             return
 
