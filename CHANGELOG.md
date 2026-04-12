@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.0.0...v1.1.0) (2026-04-12)
+
+
+### Features
+
+* Migrating from local persistence to sqlite for drafts ([#10](https://github.com/jhou98/CalvinsDiscordBots/issues/10)) ([2e2cbdb](https://github.com/jhou98/CalvinsDiscordBots/commit/2e2cbdb4b79faa3cfa80dba5cf9cb225504c516c))
+
 ## 1.0.0 (2026-04-12)
 
 
