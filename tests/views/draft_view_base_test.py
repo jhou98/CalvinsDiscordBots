@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
+from src.helpers.validation_utils import is_numeric
 from src.models.draft_base import DraftBase
 from src.views.draft_view_base import (
     DRAFT_TTL_SECONDS,
     AddMaterialModal,
     SubmittedView,
-    _is_numeric,
     draft_key,
     evict,
     is_expired,
@@ -64,28 +64,28 @@ def _make_interaction(user_id="111", channel_id="222"):
 
 
 # ---------------------------------------------------------------------------
-# _is_numeric
+# is_numeric
 # ---------------------------------------------------------------------------
 
 
 class TestIsNumeric:
     def test_integer_string(self):
-        assert _is_numeric("3") is True
+        assert is_numeric("3") is True
 
     def test_float_string(self):
-        assert _is_numeric("2.5") is True
+        assert is_numeric("2.5") is True
 
     def test_negative(self):
-        assert _is_numeric("-1") is True
+        assert is_numeric("-1") is True
 
     def test_word(self):
-        assert _is_numeric("lots") is False
+        assert is_numeric("lots") is False
 
     def test_empty(self):
-        assert _is_numeric("") is False
+        assert is_numeric("") is False
 
     def test_mixed(self):
-        assert _is_numeric("3boxes") is False
+        assert is_numeric("3boxes") is False
 
 
 # ---------------------------------------------------------------------------

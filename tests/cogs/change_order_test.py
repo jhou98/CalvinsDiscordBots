@@ -12,12 +12,12 @@ from src.cogs.change_order import (
     ChangeOrder,
     DraftView,
     ScopeModal,
-    SubmittedView,
     drafts,
 )
 from src.models.draft_change_order import DraftChangeOrder
 from src.views.draft_view_base import (
     DRAFT_TTL_SECONDS,
+    SubmittedView,
     draft_key,
     evict,
     is_expired,
@@ -33,7 +33,7 @@ _TEST_KEY = ("123456789", "222", COMMAND)
 def _seed_draft(draft_key_val: tuple = _TEST_KEY, *, expired: bool = False):
     age = timedelta(seconds=DRAFT_TTL_SECONDS + 60) if expired else timedelta(seconds=0)
     drafts[draft_key_val] = DraftChangeOrder(
-        date="01/01/2025",
+        date_requested="01/01/2025",
         submitted_at="<t:1234567890:F>",
         scope="Install panel",
         created_at=datetime.now(UTC) - age,

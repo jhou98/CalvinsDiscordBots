@@ -187,7 +187,7 @@ class TestMatOrderCog:
         import src.cogs.change_order as co_mod
         from src.models.draft_change_order import DraftChangeOrder
 
-        co_mod.drafts[co_key] = DraftChangeOrder(date="01/01/2025", submitted_at="x", scope="s")
+        co_mod.drafts[co_key] = DraftChangeOrder(date_requested="01/01/2025", submitted_at="x", scope="s")
         cog = MatOrder(MagicMock())
         cog._stop_sweep()
         await cog.mat_order.callback(cog, mock_interaction)

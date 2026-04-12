@@ -1,5 +1,5 @@
 """
-Tests for helpers/helpers.py — pure helper functions.
+Tests for shared helper modules — date_utils, material_utils, validation_utils.
 """
 
 import re
@@ -8,14 +8,9 @@ from unittest.mock import MagicMock
 import discord
 import pytest
 
-from src.helpers.helpers import (
-    build_change_order_embed,
-    discord_timestamp,
-    format_materials,
-    format_plain_text,
-    parse_materials,
-    resolve_date,
-)
+from src.helpers.date_utils import discord_timestamp, resolve_date
+from src.helpers.material_utils import format_materials, parse_materials, validate_materials
+from src.helpers.validation_utils import is_numeric
 
 # ---------------------------------------------------------------------------
 # resolve_date
@@ -157,20 +152,84 @@ class TestFormatMaterials:
 
 
 # ---------------------------------------------------------------------------
-# build_change_order_embed
+# validate_materials
+# ---------------------------------------------------------------------------
+
+
+class TestValidateMaterials:
+    def test_valid_input_returns_list_and_none(self):
+        materials, error = validate_materials("Breaker - 3\nWire - 2")
+        assert materials == [("Breaker", "3"), ("Wire", "2")]
+        assert error is None
+
+    def test_missing_separator_returns_error(self):
+        materials, error = validate_materials("BadLine")
+        assert materials == []
+        assert error is not None
+        assert "Missing quantity" in error
+
+    def test_non_numeric_quantity_returns_error(self):
+        materials, error = validate_materials("Breaker - lots")
+        assert materials == []
+        assert error is not None
+        assert "Non-numeric" in error
+
+    def test_mixed_errors_returns_all(self):
+        materials, error = validate_materials("BadLine\nBreaker - lots")
+        assert materials == []
+        assert "Missing quantity" in error
+        assert "Non-numeric" in error
+
+    def test_empty_string(self):
+        materials, error = validate_materials("")
+        assert materials == []
+        assert error is None
+
+
+# ---------------------------------------------------------------------------
+# is_numeric
+# ---------------------------------------------------------------------------
+
+
+class TestIsNumeric:
+    def test_integer_string(self):
+        assert is_numeric("3") is True
+
+    def test_float_string(self):
+        assert is_numeric("2.5") is True
+
+    def test_negative(self):
+        assert is_numeric("-1") is True
+
+    def test_word(self):
+        assert is_numeric("lots") is False
+
+    def test_empty(self):
+        assert is_numeric("") is False
+
+    def test_mixed(self):
+        assert is_numeric("3boxes") is False
+
+
+# ---------------------------------------------------------------------------
+# Change-order-specific helpers (moved to change_order.py)
 # ---------------------------------------------------------------------------
 
 
 class TestBuildChangeOrderEmbed:
+    """Tests for _build_change_order_embed which now lives in change_order.py."""
+
     def _make_user(self):
         user = MagicMock(spec=discord.Member)
         user.mention = "<@1>"
         return user
 
     def test_returns_embed(self):
-        embed = build_change_order_embed(
+        from src.cogs.change_order import _build_change_order_embed
+
+        embed = _build_change_order_embed(
             user=self._make_user(),
-            date="01/01/2025",
+            date_requested="01/01/2025",
             submitted_at="<t:1234567890:F>",
             scope="Install new panel",
             material_list=[("Breaker", "2")],
@@ -178,9 +237,11 @@ class TestBuildChangeOrderEmbed:
         assert isinstance(embed, discord.Embed)
 
     def test_default_title(self):
-        embed = build_change_order_embed(
+        from src.cogs.change_order import _build_change_order_embed
+
+        embed = _build_change_order_embed(
             user=self._make_user(),
-            date="01/01/2025",
+            date_requested="01/01/2025",
             submitted_at="<t:1234567890:F>",
             scope="Scope",
             material_list=[],
@@ -188,9 +249,11 @@ class TestBuildChangeOrderEmbed:
         assert embed.title == "📋 Change Order"
 
     def test_custom_title_and_color(self):
-        embed = build_change_order_embed(
+        from src.cogs.change_order import _build_change_order_embed
+
+        embed = _build_change_order_embed(
             user=self._make_user(),
-            date="01/01/2025",
+            date_requested="01/01/2025",
             submitted_at="<t:1234567890:F>",
             scope="Scope",
             material_list=[],
@@ -201,9 +264,11 @@ class TestBuildChangeOrderEmbed:
         assert embed.color == discord.Color.green()
 
     def test_material_count_in_field_name(self):
-        embed = build_change_order_embed(
+        from src.cogs.change_order import _build_change_order_embed
+
+        embed = _build_change_order_embed(
             user=self._make_user(),
-            date="01/01/2025",
+            date_requested="01/01/2025",
             submitted_at="<t:1234567890:F>",
             scope="Scope",
             material_list=[("A", "1"), ("B", "2")],
@@ -212,9 +277,11 @@ class TestBuildChangeOrderEmbed:
         assert any("2 items" in name for name in field_names)
 
     def test_singular_material_count(self):
-        embed = build_change_order_embed(
+        from src.cogs.change_order import _build_change_order_embed
+
+        embed = _build_change_order_embed(
             user=self._make_user(),
-            date="01/01/2025",
+            date_requested="01/01/2025",
             submitted_at="<t:1234567890:F>",
             scope="Scope",
             material_list=[("A", "1")],
@@ -224,33 +291,47 @@ class TestBuildChangeOrderEmbed:
 
 
 class TestFormatPlainText:
+    """Tests for _format_plain_text which now lives in change_order.py."""
+
     def _make_user(self, display_name="Jack"):
         user = MagicMock(spec=discord.Member)
         user.display_name = display_name
         return user
 
     def test_contains_date(self):
-        result = format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
+        from src.cogs.change_order import _format_plain_text
+
+        result = _format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
         assert "01/01/2025" in result
 
     def test_contains_display_name(self):
-        result = format_plain_text(self._make_user("Jack"), "01/01/2025", "Install panel", [])
+        from src.cogs.change_order import _format_plain_text
+
+        result = _format_plain_text(self._make_user("Jack"), "01/01/2025", "Install panel", [])
         assert "Jack" in result
 
     def test_contains_scope(self):
-        result = format_plain_text(self._make_user(), "01/01/2025", "Run new circuits", [])
+        from src.cogs.change_order import _format_plain_text
+
+        result = _format_plain_text(self._make_user(), "01/01/2025", "Run new circuits", [])
         assert "Run new circuits" in result
 
     def test_materials_formatted_correctly(self):
-        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [("Breaker", "3")])
+        from src.cogs.change_order import _format_plain_text
+
+        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", [("Breaker", "3")])
         assert "Breaker - 3" in result
 
     def test_empty_materials_shows_placeholder(self):
-        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", [])
+        from src.cogs.change_order import _format_plain_text
+
+        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", [])
         assert "No materials listed." in result
 
     def test_multiple_materials(self):
+        from src.cogs.change_order import _format_plain_text
+
         materials = [("Breaker", "3"), ("12 AWG Wire", "2")]
-        result = format_plain_text(self._make_user(), "01/01/2025", "Scope", materials)
+        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", materials)
         assert "Breaker - 3" in result
         assert "12 AWG Wire - 2" in result

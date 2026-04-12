@@ -11,14 +11,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers.helpers import discord_timestamp, resolve_date
+from src.helpers import discord_timestamp, resolve_date
 from src.models.draft_inspection import DraftInspection
 from src.views.draft_view_base import (
     DraftKey,
     SweepMixin,
+    check_existing_draft,
     draft_key,
-    evict,
-    is_expired,
     make_draft_view,
     make_select_then_modal,
 )
@@ -215,16 +214,9 @@ class InspectionReq(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit an inspection request")
     async def inspection_req(self, interaction: discord.Interaction):
-        key = draft_key(interaction, COMMAND)
-        existing = drafts.get(key)
-        if existing and is_expired(existing):
-            await evict(drafts, key)
-        if key in drafts:
-            await interaction.response.send_message(
-                "⚠️ You already have an inspection request in progress in this channel. "
-                "Finish or cancel it before starting a new one.",
-                ephemeral=True,
-            )
+        if await check_existing_draft(
+            interaction, drafts, COMMAND, "an inspection request"
+        ):
             return
         # Ephemeral so the type-picker doesn't clutter the channel
         await interaction.response.send_message(

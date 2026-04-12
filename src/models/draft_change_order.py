@@ -11,7 +11,7 @@ from src.models.draft_base import DraftBase
 
 @dataclass
 class DraftChangeOrder(DraftBase):
-    date: str = ""
+    date_requested: str = ""
     submitted_at: str = ""
     scope: str = ""
     materials: list[tuple[str, str]] = field(default_factory=list)

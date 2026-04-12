@@ -25,6 +25,9 @@ Removes the draft from the store and edits its Discord message to show an expiry
 #### `draft_key(interaction, command_name) -> DraftKey`
 Builds the store key from an interaction's `user.id`, `channel_id`, and the command name.
 
+#### `check_existing_draft(interaction, store, command_name, label) -> bool`
+Checks for an existing draft (evicting it first if expired). Returns `True` and sends an ephemeral error if a non-expired draft exists, `False` otherwise. Used by all four cog command handlers to deduplicate the draft-existence check.
+
 ---
 
 ### `SubmittedView`

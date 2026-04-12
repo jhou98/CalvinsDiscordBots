@@ -67,17 +67,33 @@ def draft_key(interaction: discord.Interaction, command_name: str) -> DraftKey:
     return (str(interaction.user.id), str(interaction.channel_id), command_name)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_numeric(value: str) -> bool:
-    try:
-        float(value)
+async def check_existing_draft(
+    interaction: discord.Interaction,
+    store: dict,
+    command_name: str,
+    label: str,
+) -> bool:
+    """
+    Check for an existing draft, evict if expired.
+    Returns True (blocked) if there is a non-expired draft, False otherwise.
+    """
+    key = draft_key(interaction, command_name)
+    existing = store.get(key)
+    if existing and is_expired(existing):
+        log.info(
+            "Lazy eviction on command entry for user %s in channel %s",
+            key[0],
+            key[1],
+        )
+        await evict(store, key)
+    if key in store:
+        await interaction.response.send_message(
+            f"⚠️ You already have {label} in progress in this channel. "
+            "Finish or cancel it before starting a new one.",
+            ephemeral=True,
+        )
         return True
-    except ValueError:
-        return False
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +149,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         self.view_cls = view_cls
 
     async def on_submit(self, interaction: discord.Interaction):
-        from src.helpers.helpers import parse_materials
+        from src.helpers.material_utils import validate_materials
 
         draft = self.store.get(self.draft_key)
         if not draft:
@@ -150,26 +166,9 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
             )
             return
 
-        material_list, parse_errors = parse_materials(self.materials_input.value)
-        non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)]
-
-        if parse_errors or non_numeric:
-            error_lines = []
-            if parse_errors:
-                error_lines.append(
-                    "**Missing quantity** (expected `Name - Quantity`):\n"
-                    + "\n".join(f"• `{e}`" for e in parse_errors)
-                )
-            if non_numeric:
-                error_lines.append(
-                    "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
-                )
-            await interaction.response.send_message(
-                "⚠️ Some lines couldn't be added:\n\n"
-                + "\n\n".join(error_lines)
-                + "\n\nUse the format `Name - Quantity` with a numeric quantity.",
-                ephemeral=True,
-            )
+        material_list, error_msg = validate_materials(self.materials_input.value)
+        if error_msg:
+            await interaction.response.send_message(error_msg, ephemeral=True)
             return
 
         draft.materials.extend(material_list)

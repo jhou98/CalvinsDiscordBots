@@ -19,14 +19,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers.helpers import discord_timestamp, resolve_date
+from src.helpers import discord_timestamp, resolve_date
 from src.models.draft_rfi import DraftRfi
 from src.views.draft_view_base import (
     DraftKey,
     SweepMixin,
+    check_existing_draft,
     draft_key,
-    evict,
-    is_expired,
     make_draft_view,
     make_select_then_modal,
 )
@@ -298,16 +297,7 @@ class Rfi(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit a Request for Information")
     async def rfi(self, interaction: discord.Interaction):
-        key = draft_key(interaction, COMMAND)
-        existing = drafts.get(key)
-        if existing and is_expired(existing):
-            await evict(drafts, key)
-        if key in drafts:
-            await interaction.response.send_message(
-                "⚠️ You already have an RFI in progress in this channel. "
-                "Finish or cancel it before starting a new one.",
-                ephemeral=True,
-            )
+        if await check_existing_draft(interaction, drafts, COMMAND, "an RFI"):
             return
         await interaction.response.send_message(
             "Select the impact level to continue:",
