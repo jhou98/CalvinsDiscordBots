@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.1.0...v1.2.0) (2026-04-12)
+
+
+### Features
+
+* **minor:** Adding /calvinhelp command ([#12](https://github.com/jhou98/CalvinsDiscordBots/issues/12)) ([1b9277b](https://github.com/jhou98/CalvinsDiscordBots/commit/1b9277b71d08bbf39c34c2809be3a7cde639a105))
+
 ## [1.1.0](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.0.0...v1.1.0) (2026-04-12)
 
 
