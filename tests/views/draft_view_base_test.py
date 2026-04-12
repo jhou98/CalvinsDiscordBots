@@ -11,18 +11,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
+from src.helpers.validation_utils import is_numeric
 from src.models.draft_base import DraftBase
 from src.views.draft_view_base import (
     DRAFT_TTL_SECONDS,
     AddMaterialModal,
     SubmittedView,
-    _is_numeric,
     draft_key,
     evict,
     is_expired,
     make_draft_view,
     make_select_then_modal,
 )
+from tests.conftest import make_interaction
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -44,48 +45,29 @@ def _make_draft_with_materials(*, expired: bool = False):
     return draft
 
 
-def _make_interaction(user_id="111", channel_id="222"):
-    msg = MagicMock(spec=discord.Message)
-    msg.edit = AsyncMock()
-    user = MagicMock(spec=discord.Member)
-    user.id = user_id
-    user.mention = f"<@{user_id}>"
-    user.display_name = "TestUser"
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.user = user
-    interaction.channel_id = channel_id
-    interaction.response = MagicMock()
-    interaction.response.send_message = AsyncMock()
-    interaction.response.send_modal = AsyncMock()
-    interaction.response.defer = AsyncMock()
-    interaction.original_response = AsyncMock(return_value=msg)
-    interaction.message = msg
-    return interaction, msg
-
-
 # ---------------------------------------------------------------------------
-# _is_numeric
+# is_numeric
 # ---------------------------------------------------------------------------
 
 
 class TestIsNumeric:
     def test_integer_string(self):
-        assert _is_numeric("3") is True
+        assert is_numeric("3") is True
 
     def test_float_string(self):
-        assert _is_numeric("2.5") is True
+        assert is_numeric("2.5") is True
 
     def test_negative(self):
-        assert _is_numeric("-1") is True
+        assert is_numeric("-1") is True
 
     def test_word(self):
-        assert _is_numeric("lots") is False
+        assert is_numeric("lots") is False
 
     def test_empty(self):
-        assert _is_numeric("") is False
+        assert is_numeric("") is False
 
     def test_mixed(self):
-        assert _is_numeric("3boxes") is False
+        assert is_numeric("3boxes") is False
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +165,8 @@ class TestDraftKey:
         assert key1 != key2
 
     def test_same_user_different_channels_differ(self):
-        ia, _ = _make_interaction(channel_id="100")
-        ib, _ = _make_interaction(channel_id="200")
+        ia, _ = make_interaction(channel_id="100")
+        ib, _ = make_interaction(channel_id="200")
         assert draft_key(ia, "cmd") != draft_key(ib, "cmd")
 
 
@@ -447,23 +429,29 @@ class TestMakeDraftViewSimple:
         assert "➕ Add Material" not in labels
         assert "↩️ Undo Last" not in labels
 
+    async def test_no_edit_button_by_default(self):
+        _, _, View = self._setup()
+        view = View(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" not in labels
+
     async def test_done_removes_draft(self):
         store, _, View = self._setup()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).done.callback(interaction)
         assert _TEST_KEY not in store
 
     async def test_done_edits_to_submitted_view(self):
         store, _, View = self._setup()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).done.callback(interaction)
         assert isinstance(msg.edit.call_args.kwargs.get("view"), SubmittedView)
 
     async def test_done_missing_draft_sends_ephemeral(self):
         _, _, View = self._setup()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         empty_store_view = View(_TEST_KEY)
         empty_store_view.key = ("0", "0", "noop")  # key not in store
         await empty_store_view.done.callback(interaction)
@@ -477,20 +465,20 @@ class TestMakeDraftViewSimple:
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         text_fn = MagicMock(return_value="")
         View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=False)
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await View(_TEST_KEY).done.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_cancel_removes_draft(self):
         store, _, View = self._setup()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).cancel.callback(interaction)
         assert _TEST_KEY not in store
 
     async def test_cancel_disables_buttons(self):
         store, _, View = self._setup()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         view = View(_TEST_KEY)
         await view.cancel.callback(interaction)
@@ -498,14 +486,14 @@ class TestMakeDraftViewSimple:
 
     async def test_interaction_check_wrong_user_blocked(self):
         _, _, View = self._setup()
-        interaction, _ = _make_interaction(user_id="999")
+        interaction, _ = make_interaction(user_id="999")
         result = await View(_TEST_KEY).interaction_check(interaction)
         assert result is False
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_interaction_check_correct_user_allowed(self):
         _, _, View = self._setup()
-        interaction, _ = _make_interaction(user_id="111")
+        interaction, _ = make_interaction(user_id="111")
         result = await View(_TEST_KEY).interaction_check(interaction)
         assert result is True
 
@@ -538,7 +526,7 @@ class TestMakeDraftViewWithMaterials:
     async def test_done_requires_materials(self):
         store, draft, View = self._setup()
         draft.materials = []
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).done.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
@@ -547,7 +535,7 @@ class TestMakeDraftViewWithMaterials:
     async def test_done_with_materials_removes_draft(self):
         store, draft, View = self._setup()
         draft.materials = [("Breaker", "2")]
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).done.callback(interaction)
         assert _TEST_KEY not in store
@@ -555,7 +543,7 @@ class TestMakeDraftViewWithMaterials:
     async def test_undo_removes_last_material(self):
         store, draft, View = self._setup()
         draft.materials = [("A", "1"), ("B", "2")]
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).undo_last.callback(interaction)
         assert draft.materials == [("A", "1")]
@@ -563,16 +551,22 @@ class TestMakeDraftViewWithMaterials:
     async def test_undo_empty_sends_ephemeral(self):
         store, draft, View = self._setup()
         draft.materials = []
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await View(_TEST_KEY).undo_last.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_add_material_opens_modal(self):
         store, _, View = self._setup()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await View(_TEST_KEY).add_material.callback(interaction)
         modal = interaction.response.send_modal.call_args.args[0]
         assert isinstance(modal, AddMaterialModal)
+
+    async def test_no_edit_button_by_default(self):
+        _, _, View = self._setup()
+        view = View(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" not in labels
 
 
 # ---------------------------------------------------------------------------

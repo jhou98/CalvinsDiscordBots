@@ -25,6 +25,9 @@ Removes the draft from the store and edits its Discord message to show an expiry
 #### `draft_key(interaction, command_name) -> DraftKey`
 Builds the store key from an interaction's `user.id`, `channel_id`, and the command name.
 
+#### `check_existing_draft(interaction, store, command_name, label) -> bool`
+Checks for an existing draft (evicting it first if expired). Returns `True` and sends an ephemeral error if a non-expired draft exists, `False` otherwise. Used by all four cog command handlers to deduplicate the draft-existence check.
+
 ---
 
 ### `SubmittedView`
@@ -60,7 +63,7 @@ The options list is baked in at class-creation time. To change options, pass a d
 
 ---
 
-### `make_draft_view(store, command_name, draft_embed_fn, final_embed_fn, plain_text_fn, *, has_materials) -> type`
+### `make_draft_view(store, command_name, draft_embed_fn, final_embed_fn, plain_text_fn, *, has_materials, edit_modal_factory) -> type`
 
 Factory that returns a `DraftView` class pre-wired to the given store and builder functions.
 
@@ -72,10 +75,13 @@ Factory that returns a `DraftView` class pre-wired to the given store and builde
 | `final_embed_fn(user, draft)` | Builds the submitted embed |
 | `plain_text_fn(user, draft)` | Builds the plain-text copy string |
 | `has_materials` | `True` → includes ➕ Add Material and ↩️ Undo Last buttons |
+| `edit_modal_factory` | Optional. When provided, adds a ✏️ Edit button. Called as `factory(key, store, draft_embed_fn, view_cls)` — must return a `discord.ui.Modal` |
 
 Returns one of two explicit class definitions:
-- `DraftViewWithMaterials` — Add Material (row 0), Undo Last (row 0), Done (row 1), Cancel (row 1)
-- `DraftViewSimple` — Done, Cancel
+- `DraftViewWithMaterials` — Add Material (row 0), Undo Last (row 0), [Edit (row 1)], Done (row N), Cancel (row N)
+- `DraftViewSimple` — [Edit (row 0)], Done (row N), Cancel (row N)
+
+The Edit button is only present when `edit_modal_factory` is provided. Row numbers adjust automatically.
 
 Both classes share the same expiry guard (`_check_expired`), owner check (`interaction_check`), and cancel/done logic via inner closures to avoid duplication. No timeout — TTL is managed by `created_at` and the background sweep, not discord.py's built-in view timeout.
 

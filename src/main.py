@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-from logging.handlers import TimedRotatingFileHandler
 
 import discord
 from discord.ext import commands
@@ -12,20 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-# logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        TimedRotatingFileHandler(
-            filename="bot.log",
-            when="D",
-            interval=1,
-            backupCount=7,  # 7 days
-        ),
-    ],
-)
+from src.helpers.logger import setup_logging  # noqa: E402 — must follow sys.path setup
+
+setup_logging()
 log = logging.getLogger(__name__)
 
 

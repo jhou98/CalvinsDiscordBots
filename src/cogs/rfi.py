@@ -19,17 +19,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers.helpers import discord_timestamp, resolve_date
+from src.helpers import discord_timestamp, resolve_date
 from src.models.draft_rfi import DraftRfi
 from src.views.draft_view_base import (
     DraftKey,
     SweepMixin,
+    check_existing_draft,
     draft_key,
-    evict,
-    is_expired,
     make_draft_view,
     make_select_then_modal,
 )
+from src.views.edit_modal_base import EditModalBase
 
 log = logging.getLogger(__name__)
 COMMAND = "rfi"
@@ -94,7 +94,52 @@ def _plain_text(user, draft: DraftRfi) -> str:
     return "\n".join(lines)
 
 
-DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_text)
+# ---------------------------------------------------------------------------
+# Edit modal — allows editing question details after creation.
+# Editable: questions, issues, proposed_solution
+# Non-editable: date_requested, requested_by, required_by, impact
+# ---------------------------------------------------------------------------
+
+
+class EditRfiModal(EditModalBase, title="Edit RFI Details"):
+    questions = discord.ui.TextInput(
+        label="Question (1–2 sentences)",
+        placeholder="Clear, specific question...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=500,
+    )
+    issues = discord.ui.TextInput(
+        label="Issue / Background",
+        placeholder="Why is this being asked?",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=1000,
+    )
+    proposed_solution = discord.ui.TextInput(
+        label="Proposed Solution (optional)",
+        placeholder="If you have one in mind...",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=1000,
+    )
+
+    def _pre_fill(self, draft):
+        self.questions.default = draft.questions
+        self.issues.default = draft.issues
+        self.proposed_solution.default = draft.proposed_solution
+
+    def _apply(self, draft) -> str | None:
+        draft.questions = self.questions.value.strip()
+        draft.issues = self.issues.value.strip()
+        draft.proposed_solution = self.proposed_solution.value.strip()
+        return None
+
+
+DraftView = make_draft_view(
+    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    edit_modal_factory=EditRfiModal,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +179,11 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
     async def on_submit(self, interaction: discord.Interaction):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on step 2 submit for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/rfi` again.", ephemeral=True
             )
@@ -151,6 +201,7 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
         msg = await interaction.original_response()
         view.message = msg
         draft.message = msg
+        log.info("RFI draft created for user %s in channel %s", self.key[0], self.key[1])
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +221,11 @@ class RfiStep2ContinueView(discord.ui.View):
     async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
         draft = drafts.get(self.key)
         if not draft:
+            log.error(
+                "Draft missing on continue click for user %s in channel %s",
+                self.key[0],
+                self.key[1],
+            )
             await interaction.response.send_message(
                 "⚠️ Draft expired. Please run `/rfi` again.", ephemeral=True
             )
@@ -218,11 +274,25 @@ class _RfiStep1ModalBase(discord.ui.Modal, title="RFI — Step 1 of 2"):
         try:
             date_req = resolve_date(self.date_requested.value)
         except ValueError as e:
+            log.warning(
+                "Date requested error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
             return
         try:
             req_by = resolve_date(self.required_by.value)
         except ValueError as e:
+            log.warning(
+                "Required by date error for user %s (%s) in channel %s: %s",
+                interaction.user,
+                interaction.user.id,
+                interaction.channel_id,
+                e,
+            )
             await interaction.response.send_message(f"⚠️ Required by date — {e}", ephemeral=True)
             return
 
@@ -298,16 +368,7 @@ class Rfi(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit a Request for Information")
     async def rfi(self, interaction: discord.Interaction):
-        key = draft_key(interaction, COMMAND)
-        existing = drafts.get(key)
-        if existing and is_expired(existing):
-            await evict(drafts, key)
-        if key in drafts:
-            await interaction.response.send_message(
-                "⚠️ You already have an RFI in progress in this channel. "
-                "Finish or cancel it before starting a new one.",
-                ephemeral=True,
-            )
+        if await check_existing_draft(interaction, drafts, COMMAND, "an RFI"):
             return
         await interaction.response.send_message(
             "Select the impact level to continue:",

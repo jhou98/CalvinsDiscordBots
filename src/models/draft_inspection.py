@@ -14,6 +14,7 @@ class DraftInspection(DraftBase):
     date_requested: str = ""
     inspection_date: str = ""
     inspection_type: str = ""
-    site_contact: str = ""
+    site_contact_name: str = ""
+    site_contact_phone: str = ""
     am_pm: str = ""
     submitted_at: str = ""

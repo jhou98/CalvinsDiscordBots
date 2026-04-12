@@ -67,17 +67,33 @@ def draft_key(interaction: discord.Interaction, command_name: str) -> DraftKey:
     return (str(interaction.user.id), str(interaction.channel_id), command_name)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_numeric(value: str) -> bool:
-    try:
-        float(value)
+async def check_existing_draft(
+    interaction: discord.Interaction,
+    store: dict,
+    command_name: str,
+    label: str,
+) -> bool:
+    """
+    Check for an existing draft, evict if expired.
+    Returns True (blocked) if there is a non-expired draft, False otherwise.
+    """
+    key = draft_key(interaction, command_name)
+    existing = store.get(key)
+    if existing and is_expired(existing):
+        log.info(
+            "Lazy eviction on command entry for user %s in channel %s",
+            key[0],
+            key[1],
+        )
+        await evict(store, key)
+    if key in store:
+        await interaction.response.send_message(
+            f"⚠️ You already have {label} in progress in this channel. "
+            "Finish or cancel it before starting a new one.",
+            ephemeral=True,
+        )
         return True
-    except ValueError:
-        return False
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +149,11 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         self.view_cls = view_cls
 
     async def on_submit(self, interaction: discord.Interaction):
-        from src.helpers.helpers import parse_materials
+        from src.helpers.material_utils import validate_materials
 
         draft = self.store.get(self.draft_key)
         if not draft:
+            log.error("Draft not found on add material for key %s", self.draft_key)
             await interaction.response.send_message(
                 "⚠️ Your draft expired. Please run the command again.",
                 ephemeral=True,
@@ -150,26 +167,10 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
             )
             return
 
-        material_list, parse_errors = parse_materials(self.materials_input.value)
-        non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not _is_numeric(qty)]
-
-        if parse_errors or non_numeric:
-            error_lines = []
-            if parse_errors:
-                error_lines.append(
-                    "**Missing quantity** (expected `Name - Quantity`):\n"
-                    + "\n".join(f"• `{e}`" for e in parse_errors)
-                )
-            if non_numeric:
-                error_lines.append(
-                    "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
-                )
-            await interaction.response.send_message(
-                "⚠️ Some lines couldn't be added:\n\n"
-                + "\n\n".join(error_lines)
-                + "\n\nUse the format `Name - Quantity` with a numeric quantity.",
-                ephemeral=True,
-            )
+        material_list, error_msg = validate_materials(self.materials_input.value)
+        if error_msg:
+            log.warning("Material validation failed for key %s", self.draft_key)
+            await interaction.response.send_message(error_msg, ephemeral=True)
             return
 
         draft.materials.extend(material_list)
@@ -246,6 +247,7 @@ def make_draft_view(
     plain_text_fn: TextBuilder,
     *,
     has_materials: bool = False,
+    edit_modal_factory: type | None = None,
 ) -> type:
     """
     Return a DraftView class pre-wired to the given store and builder functions.
@@ -253,9 +255,14 @@ def make_draft_view(
     Pass has_materials=True to include ➕ Add Material and ↩️ Undo Last buttons
     (used by /changeorder and /matorder).
 
+    Pass edit_modal_factory to include a ✏️ Edit button. The factory is called as
+    edit_modal_factory(key, store, draft_embed_fn, view_cls) and must return a
+    discord.ui.Modal.
+
     discord.py reads button decorators at class-definition time via
     __init_subclass__, so we define both layouts as explicit classes and return
-    the correct one — no runtime method injection needed.
+    the correct one. The Edit button is added programmatically in __init__
+    to avoid class proliferation.
     """
 
     # ------------------------------------------------------------------
@@ -287,6 +294,7 @@ def make_draft_view(
             return
         draft = store.get(self_view.key)
         if not draft:
+            log.error("Draft not found on submit for key %s", self_view.key)
             await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
             return
         if require_materials and not getattr(draft, "materials", None):
@@ -303,6 +311,12 @@ def make_draft_view(
             embed=final_embed_fn(interaction.user, draft),
             view=SubmittedView(plain_text_fn(interaction.user, draft)),
         )
+        log.info(
+            "%s submitted by user %s in channel %s",
+            command_name,
+            self_view.key[0],
+            self_view.key[1],
+        )
 
     async def _cancel(self_view, interaction: discord.Interaction):
         if await _check_expired(self_view, interaction):
@@ -312,18 +326,61 @@ def make_draft_view(
             child.disabled = True
         await interaction.response.defer()
         await interaction.message.edit(content="🗑️ Request cancelled.", embed=None, view=self_view)
+        log.info(
+            "%s cancelled by user %s in channel %s",
+            command_name,
+            self_view.key[0],
+            self_view.key[1],
+        )
 
     # ------------------------------------------------------------------
-    # Layout with material buttons (row 0: Add / Undo, row 1: Done / Cancel)
+    # Edit button helper — shared by both layouts when edit_modal_factory
+    # is provided. Added programmatically in __init__ to avoid needing
+    # extra class variants.
+    # ------------------------------------------------------------------
+
+    def _add_edit_button(self_view, row: int) -> None:
+        if edit_modal_factory is None:
+            return
+
+        edit_btn = discord.ui.Button(
+            label="✏️ Edit", style=discord.ButtonStyle.secondary, row=row
+        )
+
+        async def _edit_callback(interaction: discord.Interaction):
+            if await _check_expired(self_view, interaction):
+                return
+            draft = store.get(self_view.key)
+            if not draft:
+                log.error("Draft not found on edit for key %s", self_view.key)
+                await interaction.response.send_message(
+                    "⚠️ Draft not found.", ephemeral=True
+                )
+                return
+            modal = edit_modal_factory(
+                self_view.key, store, draft_embed_fn, type(self_view)
+            )
+            await interaction.response.send_modal(modal)
+
+        edit_btn.callback = _edit_callback
+        self_view.add_item(edit_btn)
+
+    # ------------------------------------------------------------------
+    # Layout with material buttons
+    #   row 0: Add / Undo
+    #   row 1: Edit (if edit_modal_factory)
+    #   row N: Done / Cancel
     # ------------------------------------------------------------------
 
     if has_materials:
+        done_cancel_row = 2 if edit_modal_factory else 1
 
         class DraftViewWithMaterials(discord.ui.View):
             def __init__(self, key: DraftKey):
                 super().__init__(timeout=None)
                 self.key = key
                 self.message: discord.Message | None = None
+                _add_edit_button(self, row=1)
 
             async def _check_expired(self, interaction):
                 return await _check_expired(self, interaction)
@@ -366,27 +423,35 @@ def make_draft_view(
                     view=DraftViewWithMaterials(self.key),
                 )
 
-            @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=1)
+            @discord.ui.button(
+                label="✅ Done", style=discord.ButtonStyle.success, row=done_cancel_row
+            )
             async def done(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await _done(self, interaction, require_materials=True)
 
-            @discord.ui.button(label="🗑️ Cancel", style=discord.ButtonStyle.danger, row=1)
+            @discord.ui.button(
+                label="🗑️ Cancel", style=discord.ButtonStyle.danger, row=done_cancel_row
+            )
             async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await _cancel(self, interaction)
 
         return DraftViewWithMaterials
 
     # ------------------------------------------------------------------
-    # Simple layout (Done / Cancel only)
+    # Simple layout
+    #   row 0: Edit (if edit_modal_factory)
+    #   row N: Done / Cancel
     # ------------------------------------------------------------------
 
     else:
+        done_cancel_row = 1 if edit_modal_factory else 0
 
         class DraftViewSimple(discord.ui.View):
             def __init__(self, key: DraftKey):
                 super().__init__(timeout=None)
                 self.key = key
                 self.message: discord.Message | None = None
+                _add_edit_button(self, row=0)
 
             async def _check_expired(self, interaction):
                 return await _check_expired(self, interaction)
@@ -394,11 +459,15 @@ def make_draft_view(
             async def interaction_check(self, interaction):
                 return await _interaction_check(self, interaction)
 
-            @discord.ui.button(label="✅ Done", style=discord.ButtonStyle.success)
+            @discord.ui.button(
+                label="✅ Done", style=discord.ButtonStyle.success, row=done_cancel_row
+            )
             async def done(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await _done(self, interaction, require_materials=False)
 
-            @discord.ui.button(label="🗑️ Cancel", style=discord.ButtonStyle.danger)
+            @discord.ui.button(
+                label="🗑️ Cancel", style=discord.ButtonStyle.danger, row=done_cancel_row
+            )
             async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await _cancel(self, interaction)
 

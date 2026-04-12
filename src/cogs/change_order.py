@@ -4,23 +4,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers.helpers import (
-    build_change_order_embed,
-    discord_timestamp,
-    format_plain_text,
-    parse_materials,
-    resolve_date,
-)
+from src.helpers import discord_timestamp, format_materials, resolve_date, validate_materials
 from src.models.draft_change_order import DraftChangeOrder
 from src.views.draft_view_base import (
-    DRAFT_TTL_SECONDS,  # noqa: F401 — re-exported so existing tests can import it from here
     DraftKey,
-    SubmittedView,  # noqa: F401 — re-exported for tests
     SweepMixin,
-    _is_numeric,
+    check_existing_draft,
     draft_key,
-    evict,
-    is_expired,
     make_draft_view,
 )
 
@@ -34,11 +24,60 @@ drafts: dict[DraftKey, DraftChangeOrder] = {}
 # Embed / plain-text builders
 # ---------------------------------------------------------------------------
 
+_DEFAULT_EMBED_COLOR = discord.Color.yellow()
+
+
+def _build_change_order_embed(
+    user: discord.User | discord.Member,
+    date_requested: str,
+    submitted_at: str,
+    scope: str,
+    material_list: list[tuple[str, str]],
+    *,
+    title: str = "📋 Change Order",
+    color: discord.Color = _DEFAULT_EMBED_COLOR,
+) -> discord.Embed:
+    embed = discord.Embed(title=title, color=color)
+    embed.add_field(name="📅 Date Requested", value=date_requested, inline=True)
+    embed.add_field(name="🕐 Submitted At", value=submitted_at, inline=True)
+    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
+    embed.add_field(name="🔧 Scope Added", value=scope, inline=False)
+    embed.add_field(
+        name=f"📦 Materials ({len(material_list)} item{'s' if len(material_list) != 1 else ''})",
+        value=format_materials(material_list),
+        inline=False,
+    )
+    embed.set_footer(text="Change Order System")
+    return embed
+
+
+def _format_plain_text(
+    user: discord.User | discord.Member,
+    date_requested: str,
+    scope: str,
+    material_list: list[tuple[str, str]],
+) -> str:
+    lines = [
+        "CHANGE ORDER",
+        f"Date Requested: {date_requested}",
+        f"Submitted By:   {user.display_name}",
+        "",
+        "Scope Added:",
+        scope,
+        "",
+        "Materials:",
+    ]
+    if material_list:
+        lines += [f"  {name} - {qty}" for name, qty in material_list]
+    else:
+        lines.append("  No materials listed.")
+    return "\n".join(lines)
+
 
 def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
-    return build_change_order_embed(
+    return _build_change_order_embed(
         user=user,
-        date=draft.date,
+        date_requested=draft.date_requested,
         submitted_at=draft.submitted_at,
         scope=draft.scope,
         material_list=draft.materials,
@@ -48,9 +87,9 @@ def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
 
 
 def _final_embed(user, draft: DraftChangeOrder) -> discord.Embed:
-    return build_change_order_embed(
+    return _build_change_order_embed(
         user=user,
-        date=draft.date,
+        date_requested=draft.date_requested,
         submitted_at=draft.submitted_at,
         scope=draft.scope,
         material_list=draft.materials,
@@ -60,9 +99,9 @@ def _final_embed(user, draft: DraftChangeOrder) -> discord.Embed:
 
 
 def _plain_text(user, draft: DraftChangeOrder) -> str:
-    return format_plain_text(
+    return _format_plain_text(
         user=user,
-        date=draft.date,
+        date_requested=draft.date_requested,
         scope=draft.scope,
         material_list=draft.materials,
     )
@@ -116,37 +155,22 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
 
         material_list: list[tuple[str, str]] = []
         if self.materials_input.value.strip():
-            material_list, parse_errors = parse_materials(self.materials_input.value)
-            non_numeric = [f"`{n} - {q}`" for n, q in material_list if not _is_numeric(q)]
-            if parse_errors or non_numeric:
-                error_lines = []
-                if parse_errors:
-                    error_lines.append(
-                        "**Missing quantity** (expected `Name - Quantity`):\n"
-                        + "\n".join(f"• `{e}`" for e in parse_errors)
-                    )
-                if non_numeric:
-                    error_lines.append(
-                        "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
-                    )
+            material_list, error_msg = validate_materials(self.materials_input.value)
+            if error_msg:
                 log.warning(
-                    "Material errors on scope submit for user %s (%s): parse=%s non_numeric=%s",
+                    "Material errors on scope submit for user %s (%s)",
                     interaction.user,
                     interaction.user.id,
-                    parse_errors,
-                    non_numeric,
                 )
                 await interaction.response.send_message(
-                    "⚠️ Some material lines couldn't be added:\n\n"
-                    + "\n\n".join(error_lines)
-                    + "\n\nPlease run `/changeorder` again.",
+                    error_msg + "\n\nPlease run `/changeorder` again.",
                     ephemeral=True,
                 )
                 return
 
         key = draft_key(interaction, COMMAND)
         drafts[key] = DraftChangeOrder(
-            date=date,
+            date_requested=date,
             submitted_at=discord_timestamp(),
             scope=self.scope_added.value.strip(),
             materials=material_list,
@@ -161,6 +185,11 @@ class ScopeModal(discord.ui.Modal, title="Change Order — Step 1 of 2"):
         msg = await interaction.original_response()
         view.message = msg
         draft.message = msg
+        log.info(
+            "Change order draft created for user %s in channel %s",
+            key[0],
+            key[1],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -180,21 +209,7 @@ class ChangeOrder(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit a change order")
     async def change_order(self, interaction: discord.Interaction):
-        key = draft_key(interaction, COMMAND)
-        existing = drafts.get(key)
-        if existing and is_expired(existing):
-            log.info(
-                "Lazy eviction on command entry for user %s in channel %s",
-                key[0],
-                key[1],
-            )
-            await evict(drafts, key)
-        if key in drafts:
-            await interaction.response.send_message(
-                "⚠️ You already have a change order in progress in this channel. "
-                "Finish or cancel it before starting a new one.",
-                ephemeral=True,
-            )
+        if await check_existing_draft(interaction, drafts, COMMAND, "a change order"):
             return
         await interaction.response.send_modal(ScopeModal())
 
