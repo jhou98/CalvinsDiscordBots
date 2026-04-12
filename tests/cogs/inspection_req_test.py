@@ -3,7 +3,7 @@ Tests for cogs/inspection_req.py — the /inspectionreq command.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
 
@@ -23,6 +23,7 @@ from src.cogs.inspection_req import (
 )
 from src.models.draft_inspection import DraftInspection
 from src.views.draft_view_base import DRAFT_TTL_SECONDS, draft_key
+from tests.conftest import make_interaction
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,25 +49,6 @@ def _seed_draft(key=_TEST_KEY, *, expired: bool = False):
 
 def _clear_drafts():
     drafts.clear()
-
-
-def _make_interaction(user_id="123456789", channel_id="222"):
-    mock_message = MagicMock(spec=discord.Message)
-    mock_message.edit = AsyncMock()
-    user = MagicMock(spec=discord.Member)
-    user.id = user_id
-    user.mention = f"<@{user_id}>"
-    user.display_name = "TestUser"
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.user = user
-    interaction.channel_id = channel_id
-    interaction.response = MagicMock()
-    interaction.response.send_message = AsyncMock()
-    interaction.response.send_modal = AsyncMock()
-    interaction.response.defer = AsyncMock()
-    interaction.original_response = AsyncMock(return_value=mock_message)
-    interaction.message = mock_message
-    return interaction, mock_message
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +158,7 @@ class TestInspectionStep2ContinueView:
 
     async def test_continue_opens_step2_modal(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         view = InspectionStep2ContinueView(_TEST_KEY)
         await view.continue_to_step2.callback(interaction)
         interaction.response.send_modal.assert_called_once()
@@ -185,7 +167,7 @@ class TestInspectionStep2ContinueView:
         )
 
     async def test_continue_missing_draft_sends_ephemeral(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         view = InspectionStep2ContinueView(_TEST_KEY)
         await view.continue_to_step2.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
@@ -208,19 +190,19 @@ class TestInspectionStep2Modal:
 
     async def test_fills_draft_contact_name(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(name="Jane Doe").on_submit(interaction)
         assert drafts[_TEST_KEY].site_contact_name == "Jane Doe"
 
     async def test_fills_draft_contact_phone(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(phone="555-123-4567").on_submit(interaction)
         assert drafts[_TEST_KEY].site_contact_phone == "555-123-4567"
 
     async def test_sends_embed_and_view(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal().on_submit(interaction)
         kwargs = interaction.response.send_message.call_args.kwargs
         assert isinstance(kwargs.get("embed"), discord.Embed)
@@ -228,25 +210,25 @@ class TestInspectionStep2Modal:
 
     async def test_message_stored(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         await self._make_modal().on_submit(interaction)
         assert drafts[_TEST_KEY].message is msg
 
     async def test_invalid_phone_sends_ephemeral(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(phone="123").on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_invalid_phone_does_not_update_draft(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(phone="123").on_submit(interaction)
         # site_contact_phone should still be the seeded value
         assert drafts[_TEST_KEY].site_contact_phone == "555-1234"
 
     async def test_missing_draft_sends_ephemeral(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal().on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
@@ -361,7 +343,7 @@ class TestEditInspectionModal:
 
     async def test_updates_draft_on_submit(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal(
             insp_date="06/15/2026", name="Alice", phone="555-111-2222", am_pm="am"
@@ -374,14 +356,14 @@ class TestEditInspectionModal:
 
     async def test_refreshes_embed_on_submit(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal().on_submit(interaction)
         msg.edit.assert_called_once()
 
     async def test_invalid_date_rejected(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal(insp_date="bad-date").on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
@@ -390,14 +372,14 @@ class TestEditInspectionModal:
 
     async def test_invalid_phone_rejected(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal(phone="123").on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
         assert drafts[_TEST_KEY].site_contact_phone == "555-1234"
 
     async def test_missing_draft_sends_ephemeral(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         # Create modal with a seeded draft, then clear it
         _seed_draft()
         modal = self._make_modal()

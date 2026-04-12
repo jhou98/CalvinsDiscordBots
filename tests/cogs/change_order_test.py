@@ -22,6 +22,7 @@ from src.views.draft_view_base import (
     evict,
     is_expired,
 )
+from tests.conftest import make_interaction
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,23 +44,6 @@ def _seed_draft(draft_key_val: tuple = _TEST_KEY, *, expired: bool = False):
 
 def _clear_drafts():
     drafts.clear()
-
-
-def _make_interaction(user_id="123456789", channel_id="222"):
-    mock_message = MagicMock(spec=discord.Message)
-    mock_message.edit = AsyncMock()
-    user = MagicMock(spec=discord.Member)
-    user.id = user_id
-    user.mention = f"<@{user_id}>"
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.user = user
-    interaction.channel_id = channel_id
-    interaction.response = MagicMock()
-    interaction.response.send_message = AsyncMock()
-    interaction.response.send_modal = AsyncMock()
-    interaction.response.defer = AsyncMock()
-    interaction.original_response = AsyncMock(return_value=mock_message)
-    return interaction, mock_message
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +371,7 @@ class TestMultiChannelIsolation:
         assert drafts[key_ch1].materials != drafts[key_ch2].materials
 
     async def test_same_user_same_channel_blocks(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         _seed_draft(_TEST_KEY)
         cog = ChangeOrder(MagicMock())
         cog._stop_sweep()
@@ -397,7 +381,7 @@ class TestMultiChannelIsolation:
 
     async def test_same_user_different_channel_allowed(self):
         _seed_draft(_TEST_KEY)
-        interaction, _ = _make_interaction(channel_id="333")
+        interaction, _ = make_interaction(channel_id="333")
         cog = ChangeOrder(MagicMock())
         cog._stop_sweep()
         await cog.change_order.callback(cog, interaction)

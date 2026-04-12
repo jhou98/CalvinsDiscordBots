@@ -3,7 +3,7 @@ Tests for cogs/mat_order.py — the /matorder command.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import discord
 
@@ -18,6 +18,7 @@ from src.cogs.mat_order import (
 )
 from src.models.draft_mat_order import DraftMatOrder
 from src.views.draft_view_base import DRAFT_TTL_SECONDS, SubmittedView, draft_key
+from tests.conftest import make_interaction
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,25 +44,6 @@ def _seed_draft(key=_TEST_KEY, *, expired: bool = False):
 
 def _clear_drafts():
     drafts.clear()
-
-
-def _make_interaction(user_id="123456789", channel_id="222"):
-    mock_message = MagicMock(spec=discord.Message)
-    mock_message.edit = AsyncMock()
-    user = MagicMock(spec=discord.Member)
-    user.id = user_id
-    user.mention = f"<@{user_id}>"
-    user.display_name = "TestUser"
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.user = user
-    interaction.channel_id = channel_id
-    interaction.response = MagicMock()
-    interaction.response.send_message = AsyncMock()
-    interaction.response.send_modal = AsyncMock()
-    interaction.response.defer = AsyncMock()
-    interaction.original_response = AsyncMock(return_value=mock_message)
-    interaction.message = mock_message
-    return interaction, mock_message
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +133,7 @@ class TestMatOrderStep2ContinueView:
 
     async def test_continue_opens_step2_modal(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         view = MatOrderStep2ContinueView(_TEST_KEY)
         await view.continue_to_step2.callback(interaction)
         interaction.response.send_modal.assert_called_once()
@@ -160,7 +142,7 @@ class TestMatOrderStep2ContinueView:
         )
 
     async def test_continue_missing_draft_sends_ephemeral(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         view = MatOrderStep2ContinueView(_TEST_KEY)
         await view.continue_to_step2.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
@@ -183,19 +165,19 @@ class TestMatOrderStep2Modal:
 
     async def test_stores_delivery_notes(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(delivery_notes="Call before delivery").on_submit(interaction)
         assert drafts[_TEST_KEY].delivery_notes == "Call before delivery"
 
     async def test_materials_starts_empty_when_not_provided(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal().on_submit(interaction)
         assert drafts[_TEST_KEY].materials == []
 
     async def test_seeded_with_initial_materials(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(materials_text="Breaker - 3\nWire - 2").on_submit(interaction)
         materials = drafts[_TEST_KEY].materials
         assert ("Breaker", "3") in materials
@@ -203,7 +185,7 @@ class TestMatOrderStep2Modal:
 
     async def test_sends_embed_and_view(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal().on_submit(interaction)
         kwargs = interaction.response.send_message.call_args.kwargs
         assert isinstance(kwargs.get("embed"), discord.Embed)
@@ -211,24 +193,24 @@ class TestMatOrderStep2Modal:
 
     async def test_message_stored(self):
         _seed_draft()
-        interaction, msg = _make_interaction()
+        interaction, msg = make_interaction()
         await self._make_modal().on_submit(interaction)
         assert drafts[_TEST_KEY].message is msg
 
     async def test_invalid_material_format_sends_ephemeral(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(materials_text="BadLine").on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_invalid_material_removes_partial_draft(self):
         _seed_draft()
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal(materials_text="BadLine").on_submit(interaction)
         assert _TEST_KEY not in drafts
 
     async def test_missing_draft_sends_ephemeral(self):
-        interaction, _ = _make_interaction()
+        interaction, _ = make_interaction()
         await self._make_modal().on_submit(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 

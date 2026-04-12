@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from src.helpers.logger import setup_logging  # noqa: E402 — must follow load_dotenv / sys.path
+from src.helpers.logger import setup_logging  # noqa: E402 — must follow sys.path setup
 
 setup_logging()
 log = logging.getLogger(__name__)

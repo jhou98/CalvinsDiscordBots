@@ -38,3 +38,23 @@ def mock_interaction(mock_user, mock_message):
     interaction.response.defer = AsyncMock()
     interaction.original_response = AsyncMock(return_value=mock_message)
     return interaction
+
+
+def make_interaction(user_id="123456789", channel_id="222"):
+    """Factory for mock interactions with custom user/channel IDs."""
+    mock_message = MagicMock(spec=discord.Message)
+    mock_message.edit = AsyncMock()
+    user = MagicMock(spec=discord.Member)
+    user.id = user_id
+    user.mention = f"<@{user_id}>"
+    user.display_name = "TestUser"
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.user = user
+    interaction.channel_id = channel_id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.response.send_modal = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.original_response = AsyncMock(return_value=mock_message)
+    interaction.message = mock_message
+    return interaction, mock_message

@@ -319,10 +319,6 @@ def make_draft_view(
         await interaction.message.edit(content="🗑️ Request cancelled.", embed=None, view=self_view)
 
     # ------------------------------------------------------------------
-    # Layout with material buttons (row 0: Add / Undo, row 1: Done / Cancel)
-    # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
     # Edit button helper — shared by both layouts when edit_modal_factory
     # is provided. Added programmatically in __init__ to avoid needing
     # extra class variants.
@@ -424,10 +420,6 @@ def make_draft_view(
                 await _cancel(self, interaction)
 
         return DraftViewWithMaterials
-
-    # ------------------------------------------------------------------
-    # Simple layout (Done / Cancel only)
-    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Simple layout
