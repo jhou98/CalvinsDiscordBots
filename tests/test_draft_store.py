@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.db import close_db, init_db, load_all_drafts
+from src.db import close_db, init_db, load_drafts_by_command
 from src.db.draft_store import DraftStore, _deserialize, _serialize, register_model
 from src.models.draft_change_order import DraftChangeOrder
 from src.models.draft_rfi import DraftRfi
@@ -121,7 +121,7 @@ class TestDraftStore:
         key = ("user1", "chan1", "rfi")
         store[key] = _make_rfi()
 
-        rows = load_all_drafts()
+        rows = load_drafts_by_command("rfi")
         assert len(rows) == 1
         assert rows[0][0] == "user1"
 
@@ -132,7 +132,7 @@ class TestDraftStore:
         store.pop(key)
 
         assert key not in store
-        assert load_all_drafts() == []
+        assert load_drafts_by_command("rfi") == []
 
     def test_pop_missing_key_with_default(self):
         store = DraftStore("rfi")
@@ -194,7 +194,7 @@ class TestDraftStore:
         fresh = DraftStore.load_from_db("rfi")
         assert key not in fresh
         # Expired row should be deleted from DB too
-        assert load_all_drafts() == []
+        assert load_drafts_by_command("rfi") == []
 
     def test_load_from_db_handles_corrupt_json(self):
         """A row with invalid JSON is skipped and deleted."""
@@ -209,7 +209,7 @@ class TestDraftStore:
         fresh = DraftStore.load_from_db("rfi")
         assert len(fresh) == 0
         # Corrupt row should be cleaned up
-        assert load_all_drafts() == []
+        assert load_drafts_by_command("rfi") == []
 
     def test_db_failure_does_not_crash_setitem(self):
         store = DraftStore("rfi")

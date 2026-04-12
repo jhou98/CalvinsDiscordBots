@@ -74,16 +74,17 @@ def delete_draft(user_id: str, channel_id: str, command: str) -> None:
     _conn.commit()
 
 
-def load_all_drafts() -> list[tuple[str, str, str, str, str]]:
+def load_drafts_by_command(command: str) -> list[tuple[str, str, str, str, str]]:
     """
-    Return all rows as (user_id, channel_id, command, created_at_iso, data_json).
+    Return rows for a single command as (user_id, channel_id, command, created_at_iso, data_json).
     Caller is responsible for deserialization and TTL filtering.
     """
     if _conn is None:
         log.warning("DB not initialized — returning empty draft list")
         return []
     cursor = _conn.execute(
-        "SELECT user_id, channel_id, command, created_at, data FROM drafts"
+        "SELECT user_id, channel_id, command, created_at, data FROM drafts WHERE command = ?",
+        (command,),
     )
     return cursor.fetchall()
 

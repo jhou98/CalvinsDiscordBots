@@ -11,7 +11,7 @@ import logging
 from dataclasses import fields as dc_fields
 from datetime import UTC, datetime
 
-from src.db import delete_draft, load_all_drafts, upsert_draft
+from src.db import delete_draft, load_drafts_by_command, upsert_draft
 from src.models.draft_base import DraftBase
 from src.views.draft_view_base import DraftKey
 
@@ -125,15 +125,12 @@ class DraftStore(dict):
 
         store = cls(command_name)
         try:
-            rows = load_all_drafts()
+            rows = load_drafts_by_command(command_name)
         except Exception:
             log.exception("Failed to load drafts from DB — starting empty")
             return store
 
         for user_id, channel_id, command, created_at_iso, data_json in rows:
-            if command != command_name:
-                continue
-
             draft = _deserialize(command, created_at_iso, data_json)
             if draft is None:
                 try:
@@ -141,7 +138,9 @@ class DraftStore(dict):
                 except Exception:
                     log.exception(
                         "Failed to delete corrupt row (%s, %s, %s)",
-                        user_id, channel_id, command,
+                        user_id,
+                        channel_id,
+                        command,
                     )
                 continue
 

@@ -157,7 +157,11 @@ class EditInspectionModal(EditModalBase, title="Edit Inspection Request"):
 
 
 DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    drafts,
+    COMMAND,
+    _draft_embed,
+    _final_embed,
+    _plain_text,
     edit_modal_factory=EditInspectionModal,
 )
 
@@ -361,9 +365,7 @@ class InspectionStep1ModalOther(_InspectionStep1Base):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft_and_continue(
-            interaction, self.inspection_type_other.value.strip()
-        )
+        await self._create_draft_and_continue(interaction, self.inspection_type_other.value.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -401,9 +403,7 @@ class InspectionReq(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit an inspection request")
     async def inspection_req(self, interaction: discord.Interaction):
-        if await check_existing_draft(
-            interaction, drafts, COMMAND, "an inspection request"
-        ):
+        if await check_existing_draft(interaction, drafts, COMMAND, "an inspection request"):
             return
         # Ephemeral so the type-picker doesn't clutter the channel
         await interaction.response.send_message(

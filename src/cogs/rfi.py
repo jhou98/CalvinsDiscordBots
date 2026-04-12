@@ -19,6 +19,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import discord_timestamp, resolve_date
 from src.models.draft_rfi import DraftRfi
 from src.views.draft_view_base import (
@@ -29,7 +30,6 @@ from src.views.draft_view_base import (
     make_draft_view,
     make_select_then_modal,
 )
-from src.db.draft_store import DraftStore, register_model
 from src.views.edit_modal_base import EditModalBase
 
 log = logging.getLogger(__name__)
@@ -139,7 +139,11 @@ class EditRfiModal(EditModalBase, title="Edit RFI Details"):
 
 
 DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    drafts,
+    COMMAND,
+    _draft_embed,
+    _final_embed,
+    _plain_text,
     edit_modal_factory=EditRfiModal,
 )
 

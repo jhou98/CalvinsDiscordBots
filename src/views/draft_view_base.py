@@ -345,9 +345,7 @@ def make_draft_view(
         if edit_modal_factory is None:
             return
 
-        edit_btn = discord.ui.Button(
-            label="✏️ Edit", style=discord.ButtonStyle.secondary, row=row
-        )
+        edit_btn = discord.ui.Button(label="✏️ Edit", style=discord.ButtonStyle.secondary, row=row)
 
         async def _edit_callback(interaction: discord.Interaction):
             if await _check_expired(self_view, interaction):
@@ -355,13 +353,9 @@ def make_draft_view(
             draft = store.get(self_view.key)
             if not draft:
                 log.error("Draft not found on edit for key %s", self_view.key)
-                await interaction.response.send_message(
-                    "⚠️ Draft not found.", ephemeral=True
-                )
+                await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
                 return
-            modal = edit_modal_factory(
-                self_view.key, store, draft_embed_fn, type(self_view)
-            )
+            modal = edit_modal_factory(self_view.key, store, draft_embed_fn, type(self_view))
             await interaction.response.send_modal(modal)
 
         edit_btn.callback = _edit_callback

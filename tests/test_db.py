@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.db import close_db, delete_draft, init_db, load_all_drafts, upsert_draft
+from src.db import close_db, delete_draft, init_db, load_drafts_by_command, upsert_draft
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def test_init_creates_table(tmp_path):
     close_db()
     init_db(db_path)
     assert db_path.exists()
-    rows = load_all_drafts()
+    rows = load_drafts_by_command("rfi")
     assert rows == []
 
 
@@ -32,7 +32,7 @@ def test_upsert_and_load():
     data = {"field_a": "hello", "field_b": 42}
     upsert_draft("user1", "chan1", "rfi", now, data)
 
-    rows = load_all_drafts()
+    rows = load_drafts_by_command("rfi")
     assert len(rows) == 1
     user_id, channel_id, command, created_at_iso, data_json = rows[0]
     assert user_id == "user1"
@@ -48,7 +48,7 @@ def test_upsert_replaces_on_conflict():
     upsert_draft("u", "c", "cmd", now, {"v": 1})
     upsert_draft("u", "c", "cmd", now, {"v": 2})
 
-    rows = load_all_drafts()
+    rows = load_drafts_by_command("cmd")
     assert len(rows) == 1
     assert json.loads(rows[0][4]) == {"v": 2}
 
@@ -59,7 +59,7 @@ def test_delete_removes_row():
     upsert_draft("u", "c", "cmd", now, {"x": 1})
     delete_draft("u", "c", "cmd")
 
-    assert load_all_drafts() == []
+    assert load_drafts_by_command("cmd") == []
 
 
 def test_delete_missing_row_no_error():
@@ -73,15 +73,18 @@ def test_multiple_commands():
     upsert_draft("u", "c", "rfi", now, {"a": 1})
     upsert_draft("u", "c", "matorder", now, {"b": 2})
 
-    rows = load_all_drafts()
-    assert len(rows) == 2
-    commands = {r[2] for r in rows}
-    assert commands == {"rfi", "matorder"}
+    rfi_rows = load_drafts_by_command("rfi")
+    assert len(rfi_rows) == 1
+    assert rfi_rows[0][2] == "rfi"
+
+    matorder_rows = load_drafts_by_command("matorder")
+    assert len(matorder_rows) == 1
+    assert matorder_rows[0][2] == "matorder"
 
 
 def test_load_empty_db():
-    """load_all_drafts returns empty list on a fresh database."""
-    assert load_all_drafts() == []
+    """load_drafts_by_command returns empty list on a fresh database."""
+    assert load_drafts_by_command("rfi") == []
 
 
 def test_operations_without_init():
@@ -90,4 +93,4 @@ def test_operations_without_init():
     # Should not raise — just log warnings and return gracefully
     upsert_draft("u", "c", "cmd", datetime.now(UTC), {})
     delete_draft("u", "c", "cmd")
-    assert load_all_drafts() == []
+    assert load_drafts_by_command("cmd") == []
