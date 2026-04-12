@@ -20,6 +20,15 @@ log = logging.getLogger(__name__)
 class CalvinBot(commands.Bot):
     async def setup_hook(self):
         try:
+            from src.db import DB_PATH, init_db
+
+            try:
+                init_db()
+            except Exception:
+                log.exception("DB init failed — deleting corrupt database and retrying")
+                DB_PATH.unlink(missing_ok=True)
+                init_db()
+
             await self.load_extension("src.cogs.change_order")
             await self.load_extension("src.cogs.inspection_req")
             await self.load_extension("src.cogs.mat_order")

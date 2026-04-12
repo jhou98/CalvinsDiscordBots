@@ -19,6 +19,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import discord_timestamp, resolve_date
 from src.models.draft_rfi import DraftRfi
 from src.views.draft_view_base import (
@@ -44,7 +45,8 @@ RFI_IMPACT_OPTIONS: list[str] = [
     "Minor",
 ]
 
-drafts: dict[DraftKey, DraftRfi] = {}
+register_model(COMMAND, DraftRfi)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +139,11 @@ class EditRfiModal(EditModalBase, title="Edit RFI Details"):
 
 
 DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    drafts,
+    COMMAND,
+    _draft_embed,
+    _final_embed,
+    _plain_text,
     edit_modal_factory=EditRfiModal,
 )
 
@@ -191,6 +197,7 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
         draft.questions = self.questions.value.strip()
         draft.issues = self.issues.value.strip()
         draft.proposed_solution = self.proposed_solution.value.strip()
+        drafts.save(self.key)
 
         view = DraftView(self.key)
         await interaction.response.send_message(

@@ -162,9 +162,7 @@ class TestInspectionStep2ContinueView:
         view = InspectionStep2ContinueView(_TEST_KEY)
         await view.continue_to_step2.callback(interaction)
         interaction.response.send_modal.assert_called_once()
-        assert isinstance(
-            interaction.response.send_modal.call_args.args[0], InspectionStep2Modal
-        )
+        assert isinstance(interaction.response.send_modal.call_args.args[0], InspectionStep2Modal)
 
     async def test_continue_missing_draft_sends_ephemeral(self):
         interaction, _ = make_interaction()

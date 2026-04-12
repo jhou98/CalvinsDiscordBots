@@ -18,6 +18,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import discord_timestamp, resolve_date, validate_phone
 from src.models.draft_inspection import DraftInspection
 from src.views.draft_view_base import (
@@ -45,7 +46,8 @@ INSPECTION_TYPES: list[str] = [
     "Service",
 ]
 
-drafts: dict[DraftKey, DraftInspection] = {}
+register_model(COMMAND, DraftInspection)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +157,11 @@ class EditInspectionModal(EditModalBase, title="Edit Inspection Request"):
 
 
 DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    drafts,
+    COMMAND,
+    _draft_embed,
+    _final_embed,
+    _plain_text,
     edit_modal_factory=EditInspectionModal,
 )
 
@@ -214,6 +220,7 @@ class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Conta
 
         draft.site_contact_name = self.site_contact_name.value.strip()
         draft.site_contact_phone = phone
+        drafts.save(self.key)
 
         view = DraftView(self.key)
         await interaction.response.send_message(
@@ -358,9 +365,7 @@ class InspectionStep1ModalOther(_InspectionStep1Base):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft_and_continue(
-            interaction, self.inspection_type_other.value.strip()
-        )
+        await self._create_draft_and_continue(interaction, self.inspection_type_other.value.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -398,9 +403,7 @@ class InspectionReq(commands.Cog, SweepMixin):
 
     @app_commands.command(name=COMMAND, description="Submit an inspection request")
     async def inspection_req(self, interaction: discord.Interaction):
-        if await check_existing_draft(
-            interaction, drafts, COMMAND, "an inspection request"
-        ):
+        if await check_existing_draft(interaction, drafts, COMMAND, "an inspection request"):
             return
         # Ephemeral so the type-picker doesn't clutter the channel
         await interaction.response.send_message(

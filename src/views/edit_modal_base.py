@@ -56,6 +56,9 @@ class EditModalBase(discord.ui.Modal):
             await interaction.response.send_message(error, ephemeral=True)
             return
 
+        if hasattr(self.store, "save"):
+            self.store.save(self.key)
+
         await interaction.response.defer()
         await interaction.message.edit(
             embed=self.draft_embed_fn(interaction.user, draft),

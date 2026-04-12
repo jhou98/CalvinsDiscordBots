@@ -52,9 +52,7 @@ def validate_materials(raw: str) -> tuple[list[tuple[str, str]], str | None]:
             + "\n".join(f"• `{e}`" for e in parse_errors)
         )
     if non_numeric:
-        error_lines.append(
-            "**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric)
-        )
+        error_lines.append("**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric))
     error_msg = (
         "⚠️ Some lines couldn't be added:\n\n"
         + "\n\n".join(error_lines)

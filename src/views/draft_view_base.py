@@ -27,7 +27,7 @@ from src.models.draft_base import DraftBase
 
 log = logging.getLogger(__name__)
 
-DRAFT_TTL_SECONDS = 86400  # 1 day
+DRAFT_TTL_SECONDS = 604800  # 7 days
 SWEEP_INTERVAL_MINS = 60  # background sweep cadence
 
 # (user_id, channel_id, command_name) — all strings to avoid snowflake overflow
@@ -174,6 +174,8 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
             return
 
         draft.materials.extend(material_list)
+        if hasattr(self.store, "save"):
+            self.store.save(self.draft_key)
         await interaction.response.defer()
         await interaction.message.edit(
             embed=self.draft_embed_fn(interaction.user, draft),
@@ -343,9 +345,7 @@ def make_draft_view(
         if edit_modal_factory is None:
             return
 
-        edit_btn = discord.ui.Button(
-            label="✏️ Edit", style=discord.ButtonStyle.secondary, row=row
-        )
+        edit_btn = discord.ui.Button(label="✏️ Edit", style=discord.ButtonStyle.secondary, row=row)
 
         async def _edit_callback(interaction: discord.Interaction):
             if await _check_expired(self_view, interaction):
@@ -353,13 +353,9 @@ def make_draft_view(
             draft = store.get(self_view.key)
             if not draft:
                 log.error("Draft not found on edit for key %s", self_view.key)
-                await interaction.response.send_message(
-                    "⚠️ Draft not found.", ephemeral=True
-                )
+                await interaction.response.send_message("⚠️ Draft not found.", ephemeral=True)
                 return
-            modal = edit_modal_factory(
-                self_view.key, store, draft_embed_fn, type(self_view)
-            )
+            modal = edit_modal_factory(self_view.key, store, draft_embed_fn, type(self_view))
             await interaction.response.send_modal(modal)
 
         edit_btn.callback = _edit_callback
@@ -417,6 +413,8 @@ def make_draft_view(
                     await interaction.response.send_message("Nothing to undo.", ephemeral=True)
                     return
                 draft.materials.pop()
+                if hasattr(store, "save"):
+                    store.save(self.key)
                 await interaction.response.defer()
                 await interaction.message.edit(
                     embed=draft_embed_fn(interaction.user, draft),
