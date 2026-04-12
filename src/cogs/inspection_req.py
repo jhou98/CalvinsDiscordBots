@@ -1,6 +1,13 @@
 """
 /inspectionreq — Inspection Request command.
 
+Flow:
+  /inspectionreq → ephemeral select (type) → Step 1 modal → Continue button → Step 2 modal → draft embed
+
+Step 1 collects inspection details; Step 2 collects site contact info.
+This two-step approach keeps each modal within Discord's 5-field limit
+after splitting site contact into separate name and phone fields.
+
 To add or rename inspection types, edit INSPECTION_TYPES below.
 "Other" is always appended automatically — no other changes needed.
 """
@@ -11,7 +18,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers import discord_timestamp, resolve_date
+from src.helpers import discord_timestamp, resolve_date, validate_phone
 from src.models.draft_inspection import DraftInspection
 from src.views.draft_view_base import (
     DraftKey,
@@ -53,7 +60,11 @@ def _embed(user, draft: DraftInspection, *, title: str, color: discord.Color) ->
     embed.add_field(name="📆 Inspection Date", value=draft.inspection_date, inline=True)
     embed.add_field(name="🔍 Inspection Type", value=draft.inspection_type, inline=True)
     embed.add_field(name="🌅 AM / PM", value=draft.am_pm, inline=True)
-    embed.add_field(name="📞 Site Contact", value=draft.site_contact, inline=False)
+    embed.add_field(
+        name="📞 Site Contact",
+        value=f"{draft.site_contact_name} — {draft.site_contact_phone}",
+        inline=False,
+    )
     embed.set_footer(text="Inspection Request System")
     return embed
 
@@ -77,7 +88,7 @@ def _plain_text(user, draft: DraftInspection) -> str:
             f"Inspection Date: {draft.inspection_date}",
             f"Type:            {draft.inspection_type}",
             f"AM / PM:         {draft.am_pm}",
-            f"Site Contact:    {draft.site_contact}",
+            f"Site Contact:    {draft.site_contact_name} — {draft.site_contact_phone}",
         ]
     )
 
@@ -86,16 +97,97 @@ DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_
 
 
 # ---------------------------------------------------------------------------
-# Modals
-#
-# _InspectionModalBase holds the four shared fields and the draft-creation
-# logic. Two concrete subclasses handle the inspection_type differently:
-#   - InspectionModal        → type came from the select menu (known value)
-#   - InspectionModalOther   → "Other" selected; adds a free-text type field
+# Step 2 modal — site contact info
+# Shown after Step 1 completes. Fills in site_contact_name and
+# site_contact_phone on the already-created draft, then posts the draft embed.
 # ---------------------------------------------------------------------------
 
 
-class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
+class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Contact"):
+    site_contact_name = discord.ui.TextInput(
+        label="Site Contact Name",
+        placeholder="Jane Smith",
+        required=True,
+        max_length=100,
+    )
+    site_contact_phone = discord.ui.TextInput(
+        label="Site Contact Phone",
+        placeholder="555-867-5309",
+        required=True,
+        max_length=30,
+    )
+
+    def __init__(self, key: DraftKey):
+        super().__init__()
+        self.key = key
+
+    async def on_submit(self, interaction: discord.Interaction):
+        draft = drafts.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
+            )
+            return
+
+        phone = validate_phone(self.site_contact_phone.value)
+        if phone is None:
+            await interaction.response.send_message(
+                "⚠️ Invalid phone number. Please include 7–15 digits "
+                "(e.g. `555-867-5309`, `(555) 867-5309`).",
+                ephemeral=True,
+            )
+            return
+
+        draft.site_contact_name = self.site_contact_name.value.strip()
+        draft.site_contact_phone = phone
+
+        view = DraftView(self.key)
+        await interaction.response.send_message(
+            content="Draft created! Review and click **Done** to submit.",
+            embed=_draft_embed(interaction.user, draft),
+            view=view,
+        )
+        msg = await interaction.original_response()
+        view.message = msg
+        draft.message = msg
+
+
+# ---------------------------------------------------------------------------
+# Step 2 continue button — bridges the modal→modal gap.
+# Discord forbids responding to a modal submission with another modal, so
+# Step 1 posts an ephemeral "Continue" button instead.
+# ---------------------------------------------------------------------------
+
+
+class InspectionStep2ContinueView(discord.ui.View):
+    def __init__(self, key: DraftKey):
+        super().__init__(timeout=300)  # 5 min to click Continue
+        self.key = key
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary)
+    async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        draft = drafts.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
+            )
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.send_modal(InspectionStep2Modal(self.key))
+
+
+# ---------------------------------------------------------------------------
+# Step 1 modals — inspection details
+#
+# _InspectionStep1Base holds the three shared fields and the partial-draft
+# creation logic. Two concrete subclasses handle the inspection_type:
+#   - InspectionStep1Modal      → type came from the select menu (known value)
+#   - InspectionStep1ModalOther → "Other" selected; adds a free-text type field
+# ---------------------------------------------------------------------------
+
+
+class _InspectionStep1Base(discord.ui.Modal, title="Inspection Request — Step 1 of 2"):
     inspection_date = discord.ui.TextInput(
         label="Inspection Date",
         placeholder="MM/DD/YYYY",
@@ -108,12 +200,6 @@ class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
         required=False,
         max_length=10,
     )
-    site_contact = discord.ui.TextInput(
-        label="Site Contact",
-        placeholder="Name and phone number",
-        required=True,
-        max_length=200,
-    )
     am_pm = discord.ui.TextInput(
         label="AM / PM Preference",
         placeholder="AM  or  PM",
@@ -125,7 +211,9 @@ class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
         super().__init__()
         self._inspection_type = inspection_type
 
-    async def _create_draft(self, interaction: discord.Interaction, inspection_type: str):
+    async def _create_draft_and_continue(
+        self, interaction: discord.Interaction, inspection_type: str
+    ):
         try:
             date_req = resolve_date(self.date_requested.value)
         except ValueError as e:
@@ -142,30 +230,25 @@ class _InspectionModalBase(discord.ui.Modal, title="Inspection Request"):
             date_requested=date_req,
             inspection_date=insp_date,
             inspection_type=inspection_type,
-            site_contact=self.site_contact.value.strip(),
             am_pm=self.am_pm.value.strip().upper(),
             submitted_at=discord_timestamp(),
         )
-        draft = drafts[key]
-        view = DraftView(key)
+        # Can't send_modal from a modal on_submit — post an ephemeral button instead
         await interaction.response.send_message(
-            content="Draft created! Review and click **Done** to submit.",
-            embed=_draft_embed(interaction.user, draft),
-            view=view,
+            content="✅ Step 1 saved! Click **Continue →** to add site contact details.",
+            view=InspectionStep2ContinueView(key),
+            ephemeral=True,
         )
-        msg = await interaction.original_response()
-        view.message = msg
-        draft.message = msg
 
 
-class InspectionModal(_InspectionModalBase):
+class InspectionStep1Modal(_InspectionStep1Base):
     """Used when a named inspection type is selected from the menu."""
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft(interaction, self._inspection_type)
+        await self._create_draft_and_continue(interaction, self._inspection_type)
 
 
-class InspectionModalOther(_InspectionModalBase):
+class InspectionStep1ModalOther(_InspectionStep1Base):
     """Used when 'Other' is selected — adds a free-text type field."""
 
     inspection_type_other = discord.ui.TextInput(
@@ -176,7 +259,9 @@ class InspectionModalOther(_InspectionModalBase):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self._create_draft(interaction, self.inspection_type_other.value.strip())
+        await self._create_draft_and_continue(
+            interaction, self.inspection_type_other.value.strip()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +278,8 @@ class InspectionTypeSelectView(
 ):
     async def modal_factory(self, value: str) -> discord.ui.Modal:
         if value == "Other":
-            return InspectionModalOther(inspection_type=value)
-        return InspectionModal(inspection_type=value)
+            return InspectionStep1ModalOther(inspection_type=value)
+        return InspectionStep1Modal(inspection_type=value)
 
 
 # ---------------------------------------------------------------------------

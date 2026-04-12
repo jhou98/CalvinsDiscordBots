@@ -1,5 +1,13 @@
 """
 /matorder — Material Order command.
+
+Flow:
+  /matorder → Step 1 modal → Continue button → Step 2 modal → draft embed
+
+Step 1 collects order metadata and site contact; Step 2 collects delivery
+notes and optional initial materials. This two-step approach keeps each
+modal within Discord's 5-field limit after splitting site contact into
+separate name and phone fields.
 """
 
 import logging
@@ -8,7 +16,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from src.helpers import discord_timestamp, format_materials, resolve_date
+from src.helpers import (
+    discord_timestamp,
+    format_materials,
+    resolve_date,
+    validate_materials,
+    validate_phone,
+)
 from src.models.draft_mat_order import DraftMatOrder
 from src.views.draft_view_base import (
     DraftKey,
@@ -35,7 +49,11 @@ def _embed(user, draft: DraftMatOrder, *, title: str, color: discord.Color) -> d
     embed.add_field(name="🕐 Submitted At", value=draft.submitted_at, inline=True)
     embed.add_field(name="👤 Requested By", value=draft.requested_by, inline=True)
     embed.add_field(name="📆 Required Date", value=draft.required_date, inline=True)
-    embed.add_field(name="📞 Site Contact", value=draft.site_contact, inline=True)
+    embed.add_field(
+        name="📞 Site Contact",
+        value=f"{draft.site_contact_name} — {draft.site_contact_phone}",
+        inline=True,
+    )
     if draft.delivery_notes:
         embed.add_field(name="📝 Delivery Notes", value=draft.delivery_notes, inline=False)
     embed.add_field(
@@ -61,7 +79,7 @@ def _plain_text(user, draft: DraftMatOrder) -> str:
         f"Date Requested: {draft.date_requested}",
         f"Requested By:   {draft.requested_by}",
         f"Required Date:  {draft.required_date}",
-        f"Site Contact:   {draft.site_contact}",
+        f"Site Contact:   {draft.site_contact_name} — {draft.site_contact_phone}",
     ]
     if draft.delivery_notes:
         lines += ["", "Delivery Notes:", draft.delivery_notes]
@@ -80,11 +98,99 @@ DraftView = make_draft_view(
 
 
 # ---------------------------------------------------------------------------
-# Modal
+# Step 2 modal — delivery notes and initial materials
+# Shown after Step 1 completes. Fills in delivery_notes and optional
+# materials on the already-created draft, then posts the draft embed.
 # ---------------------------------------------------------------------------
 
 
-class MatOrderModal(discord.ui.Modal, title="Material Order"):
+class MatOrderStep2Modal(discord.ui.Modal, title="Material Order — Step 2 of 2"):
+    delivery_notes = discord.ui.TextInput(
+        label="Delivery Notes (optional)",
+        placeholder="Gate code, drop-off location, etc.",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=500,
+    )
+    materials_input = discord.ui.TextInput(
+        label="Materials  (Name - Quantity, one per line)",
+        placeholder="20A Breaker - 3\n12 AWG Wire (250ft) - 2",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=1000,
+    )
+
+    def __init__(self, key: DraftKey):
+        super().__init__()
+        self.key = key
+
+    async def on_submit(self, interaction: discord.Interaction):
+        draft = drafts.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/matorder` again.", ephemeral=True
+            )
+            return
+
+        draft.delivery_notes = self.delivery_notes.value.strip()
+
+        if self.materials_input.value.strip():
+            material_list, error_msg = validate_materials(self.materials_input.value)
+            if error_msg:
+                log.warning(
+                    "Material errors on matorder step 2 for user %s (%s)",
+                    interaction.user,
+                    interaction.user.id,
+                )
+                await interaction.response.send_message(
+                    error_msg + "\n\nPlease run `/matorder` again.",
+                    ephemeral=True,
+                )
+                # Remove partial draft since step 2 failed
+                drafts.pop(self.key, None)
+                return
+            draft.materials = material_list
+
+        view = DraftView(self.key)
+        await interaction.response.send_message(
+            content="Draft created! Add materials below, then click **Done** when finished.",
+            embed=_draft_embed(interaction.user, draft),
+            view=view,
+        )
+        msg = await interaction.original_response()
+        view.message = msg
+        draft.message = msg
+
+
+# ---------------------------------------------------------------------------
+# Step 2 continue button — bridges the modal→modal gap.
+# ---------------------------------------------------------------------------
+
+
+class MatOrderStep2ContinueView(discord.ui.View):
+    def __init__(self, key: DraftKey):
+        super().__init__(timeout=300)  # 5 min to click Continue
+        self.key = key
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary)
+    async def continue_to_step2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        draft = drafts.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/matorder` again.", ephemeral=True
+            )
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.send_modal(MatOrderStep2Modal(self.key))
+
+
+# ---------------------------------------------------------------------------
+# Step 1 modal — order metadata and site contact
+# ---------------------------------------------------------------------------
+
+
+class MatOrderStep1Modal(discord.ui.Modal, title="Material Order — Step 1 of 2"):
     date_requested = discord.ui.TextInput(
         label="Date Requested",
         placeholder="MM/DD/YYYY  (leave blank for today)",
@@ -103,18 +209,17 @@ class MatOrderModal(discord.ui.Modal, title="Material Order"):
         required=True,
         max_length=10,
     )
-    site_contact = discord.ui.TextInput(
-        label="Site Contact w/ Phone",
-        placeholder="Jane Smith — 555-867-5309",
+    site_contact_name = discord.ui.TextInput(
+        label="Site Contact Name",
+        placeholder="Jane Smith",
         required=True,
-        max_length=200,
+        max_length=100,
     )
-    delivery_notes = discord.ui.TextInput(
-        label="Delivery Notes (optional)",
-        placeholder="Gate code, drop-off location, etc.",
-        style=discord.TextStyle.paragraph,
-        required=False,
-        max_length=500,
+    site_contact_phone = discord.ui.TextInput(
+        label="Site Contact Phone",
+        placeholder="555-867-5309",
+        required=True,
+        max_length=30,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -129,25 +234,30 @@ class MatOrderModal(discord.ui.Modal, title="Material Order"):
             await interaction.response.send_message(f"⚠️ Required date — {e}", ephemeral=True)
             return
 
+        phone = validate_phone(self.site_contact_phone.value)
+        if phone is None:
+            await interaction.response.send_message(
+                "⚠️ Invalid phone number. Please include 7–15 digits "
+                "(e.g. `555-867-5309`, `(555) 867-5309`).",
+                ephemeral=True,
+            )
+            return
+
         key = draft_key(interaction, COMMAND)
         drafts[key] = DraftMatOrder(
             date_requested=date_req,
             requested_by=self.requested_by.value.strip(),
             required_date=req_date,
-            site_contact=self.site_contact.value.strip(),
-            delivery_notes=self.delivery_notes.value.strip(),
+            site_contact_name=self.site_contact_name.value.strip(),
+            site_contact_phone=phone,
             submitted_at=discord_timestamp(),
         )
-        draft = drafts[key]
-        view = DraftView(key)
+        # Can't send_modal from a modal on_submit — post an ephemeral button instead
         await interaction.response.send_message(
-            content="Draft created! Add materials below, then click **Done** when finished.",
-            embed=_draft_embed(interaction.user, draft),
-            view=view,
+            content="✅ Step 1 saved! Click **Continue →** to add delivery notes and materials.",
+            view=MatOrderStep2ContinueView(key),
+            ephemeral=True,
         )
-        msg = await interaction.original_response()
-        view.message = msg
-        draft.message = msg
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +279,7 @@ class MatOrder(commands.Cog, SweepMixin):
     async def mat_order(self, interaction: discord.Interaction):
         if await check_existing_draft(interaction, drafts, COMMAND, "a material order"):
             return
-        await interaction.response.send_modal(MatOrderModal())
+        await interaction.response.send_modal(MatOrderStep1Modal())
 
 
 async def setup(bot: commands.Bot):

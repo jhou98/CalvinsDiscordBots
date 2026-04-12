@@ -14,7 +14,8 @@ class DraftMatOrder(DraftBase):
     date_requested: str = ""
     requested_by: str = ""
     required_date: str = ""
-    site_contact: str = ""
+    site_contact_name: str = ""
+    site_contact_phone: str = ""
     delivery_notes: str = ""
     submitted_at: str = ""
     materials: list[tuple[str, str]] = field(default_factory=list)

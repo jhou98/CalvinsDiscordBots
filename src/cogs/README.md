@@ -22,20 +22,23 @@ Cogs are Discord bot modules, each containing one slash command. All cogs import
 
 ## `/inspectionreq`
 
-**Flow:** Ephemeral select → Modal → Draft embed with buttons
+**Flow:** Ephemeral select → Step 1 modal → Ephemeral continue button → Step 2 modal → Draft embed with buttons
 
 1. User runs `/inspectionreq`
    - If the user already has an active draft in this channel, an ephemeral error is returned
 2. An ephemeral **Select menu** appears for the user to pick an inspection type
-   - Selecting a named type opens a 4-field modal
-   - Selecting **Other** opens the same modal with an extra free-text type field
-3. The modal collects:
+   - Selecting a named type opens Step 1 with 3 fields
+   - Selecting **Other** opens Step 1 with an extra free-text type field (4 fields)
+3. **Step 1 modal** collects:
    - **Inspection Date** — MM/DD/YYYY
    - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
-   - **Site Contact** — name and phone number
    - **AM / PM Preference**
    - **Inspection Type (describe)** — only shown when Other is selected
-4. A draft embed is posted with **Done** and **Cancel** buttons
+4. An ephemeral **Continue →** button appears (Discord does not allow a modal to open another modal directly)
+5. **Step 2 modal** collects:
+   - **Site Contact Name**
+   - **Site Contact Phone** — validated (7–15 digits)
+6. A draft embed is posted with **Done** and **Cancel** buttons
 
 To add or rename inspection types, edit `INSPECTION_TYPES` at the top of `inspection_req.py`. `Other` is always appended automatically.
 
@@ -43,17 +46,21 @@ To add or rename inspection types, edit `INSPECTION_TYPES` at the top of `inspec
 
 ## `/matorder`
 
-**Flow:** Modal → Draft embed with buttons
+**Flow:** Step 1 modal → Ephemeral continue button → Step 2 modal → Draft embed with buttons
 
 1. User runs `/matorder`
    - If the user already has an active draft in this channel, an ephemeral error is returned
-2. A modal opens with five fields:
+2. **Step 1 modal** opens with five fields:
    - **Date Requested** — MM/DD/YYYY, optional (defaults to today)
    - **Requested By** — name of the person requesting
    - **Required Date** — MM/DD/YYYY
-   - **Site Contact w/ Phone** — name and phone number
+   - **Site Contact Name**
+   - **Site Contact Phone** — validated (7–15 digits)
+3. An ephemeral **Continue →** button appears
+4. **Step 2 modal** opens with two fields:
    - **Delivery Notes** — optional freeform notes
-3. A draft embed is posted with four buttons:
+   - **Materials** — optional bulk entry (Name - Quantity, one per line)
+5. A draft embed is posted with four buttons:
    - ➕ **Add Material** — opens a modal to add one or more materials (Name - Quantity, one per line)
    - ↩️ **Undo Last** — removes the most recently added material
    - ✅ **Done** — requires at least one material; finalises and posts the submitted embed
