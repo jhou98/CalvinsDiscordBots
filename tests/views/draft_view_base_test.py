@@ -447,6 +447,12 @@ class TestMakeDraftViewSimple:
         assert "➕ Add Material" not in labels
         assert "↩️ Undo Last" not in labels
 
+    async def test_no_edit_button_by_default(self):
+        _, _, View = self._setup()
+        view = View(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" not in labels
+
     async def test_done_removes_draft(self):
         store, _, View = self._setup()
         interaction, msg = _make_interaction()
@@ -573,6 +579,12 @@ class TestMakeDraftViewWithMaterials:
         await View(_TEST_KEY).add_material.callback(interaction)
         modal = interaction.response.send_modal.call_args.args[0]
         assert isinstance(modal, AddMaterialModal)
+
+    async def test_no_edit_button_by_default(self):
+        _, _, View = self._setup()
+        view = View(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" not in labels
 
 
 # ---------------------------------------------------------------------------

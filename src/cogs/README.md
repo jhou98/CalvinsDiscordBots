@@ -38,7 +38,10 @@ Cogs are Discord bot modules, each containing one slash command. All cogs import
 5. **Step 2 modal** collects:
    - **Site Contact Name**
    - **Site Contact Phone** — validated (7–15 digits)
-6. A draft embed is posted with **Done** and **Cancel** buttons
+6. A draft embed is posted with three buttons:
+   - ✏️ **Edit** — re-opens a modal to modify Inspection Date, Site Contact Name, Site Contact Phone, and AM/PM. Date Requested and Inspection Type are **not** editable.
+   - ✅ **Done** — finalises and posts the submitted embed
+   - 🗑️ **Cancel** — discards the draft
 
 To add or rename inspection types, edit `INSPECTION_TYPES` at the top of `inspection_req.py`. `Other` is always appended automatically.
 

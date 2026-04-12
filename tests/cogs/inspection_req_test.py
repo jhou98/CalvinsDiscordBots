@@ -10,12 +10,15 @@ import discord
 from src.cogs.inspection_req import (
     COMMAND,
     INSPECTION_TYPES,
+    DraftView,
+    EditInspectionModal,
     InspectionReq,
     InspectionStep1Modal,
     InspectionStep1ModalOther,
     InspectionStep2ContinueView,
     InspectionStep2Modal,
     InspectionTypeSelectView,
+    _draft_embed,
     drafts,
 )
 from src.models.draft_inspection import DraftInspection
@@ -322,3 +325,106 @@ def test_inspection_types_is_a_list():
 def test_other_not_in_inspection_types_constant():
     """'Other' should be appended by make_select_then_modal, not hardcoded."""
     assert "Other" not in INSPECTION_TYPES
+
+
+# ---------------------------------------------------------------------------
+# EditInspectionModal
+# ---------------------------------------------------------------------------
+
+
+class TestEditInspectionModal:
+    def setup_method(self):
+        _clear_drafts()
+
+    def _make_modal(
+        self,
+        key=_TEST_KEY,
+        insp_date="05/01/2026",
+        name="Jane Doe",
+        phone="555-999-1234",
+        am_pm="PM",
+    ):
+        modal = EditInspectionModal(key, drafts, _draft_embed, DraftView)
+        modal.inspection_date = MagicMock(value=insp_date)
+        modal.site_contact_name = MagicMock(value=name)
+        modal.site_contact_phone = MagicMock(value=phone)
+        modal.am_pm = MagicMock(value=am_pm)
+        return modal
+
+    async def test_pre_fills_from_draft(self):
+        draft = _seed_draft()
+        modal = EditInspectionModal(_TEST_KEY, drafts, _draft_embed, DraftView)
+        assert modal.inspection_date.default == draft.inspection_date
+        assert modal.site_contact_name.default == draft.site_contact_name
+        assert modal.site_contact_phone.default == draft.site_contact_phone
+        assert modal.am_pm.default == draft.am_pm
+
+    async def test_updates_draft_on_submit(self):
+        _seed_draft()
+        interaction, msg = _make_interaction()
+        interaction.message = msg
+        await self._make_modal(
+            insp_date="06/15/2026", name="Alice", phone="555-111-2222", am_pm="am"
+        ).on_submit(interaction)
+        draft = drafts[_TEST_KEY]
+        assert draft.inspection_date == "06/15/2026"
+        assert draft.site_contact_name == "Alice"
+        assert draft.site_contact_phone == "555-111-2222"
+        assert draft.am_pm == "AM"
+
+    async def test_refreshes_embed_on_submit(self):
+        _seed_draft()
+        interaction, msg = _make_interaction()
+        interaction.message = msg
+        await self._make_modal().on_submit(interaction)
+        msg.edit.assert_called_once()
+
+    async def test_invalid_date_rejected(self):
+        _seed_draft()
+        interaction, msg = _make_interaction()
+        interaction.message = msg
+        await self._make_modal(insp_date="bad-date").on_submit(interaction)
+        assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+        # Draft should not be modified
+        assert drafts[_TEST_KEY].inspection_date == "02/01/2025"
+
+    async def test_invalid_phone_rejected(self):
+        _seed_draft()
+        interaction, msg = _make_interaction()
+        interaction.message = msg
+        await self._make_modal(phone="123").on_submit(interaction)
+        assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+        assert drafts[_TEST_KEY].site_contact_phone == "555-1234"
+
+    async def test_missing_draft_sends_ephemeral(self):
+        interaction, _ = _make_interaction()
+        # Create modal with a seeded draft, then clear it
+        _seed_draft()
+        modal = self._make_modal()
+        _clear_drafts()
+        await modal.on_submit(interaction)
+        assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+
+# ---------------------------------------------------------------------------
+# DraftView has Edit button
+# ---------------------------------------------------------------------------
+
+
+class TestDraftViewEditButton:
+    async def test_edit_button_present(self):
+        view = DraftView(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" in labels
+
+    async def test_edit_button_on_row_0(self):
+        view = DraftView(_TEST_KEY)
+        edit_btn = next(c for c in view.children if c.label == "✏️ Edit")
+        assert edit_btn.row == 0
+
+    async def test_done_cancel_on_row_1(self):
+        view = DraftView(_TEST_KEY)
+        done_btn = next(c for c in view.children if c.label == "✅ Done")
+        cancel_btn = next(c for c in view.children if c.label == "🗑️ Cancel")
+        assert done_btn.row == 1
+        assert cancel_btn.row == 1

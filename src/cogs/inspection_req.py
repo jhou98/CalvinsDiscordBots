@@ -93,7 +93,93 @@ def _plain_text(user, draft: DraftInspection) -> str:
     )
 
 
-DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_text)
+# ---------------------------------------------------------------------------
+# Edit modal — allows editing draft fields after creation.
+# Editable: inspection_date, site_contact_name, site_contact_phone, am_pm
+# Non-editable: date_requested, inspection_type
+# ---------------------------------------------------------------------------
+
+
+class EditInspectionModal(discord.ui.Modal, title="Edit Inspection Request"):
+    inspection_date = discord.ui.TextInput(
+        label="Inspection Date",
+        placeholder="MM/DD/YYYY",
+        required=True,
+        max_length=10,
+    )
+    site_contact_name = discord.ui.TextInput(
+        label="Site Contact Name",
+        placeholder="Jane Smith",
+        required=True,
+        max_length=100,
+    )
+    site_contact_phone = discord.ui.TextInput(
+        label="Site Contact Phone",
+        placeholder="555-867-5309",
+        required=True,
+        max_length=30,
+    )
+    am_pm = discord.ui.TextInput(
+        label="AM / PM Preference",
+        placeholder="AM  or  PM",
+        required=True,
+        max_length=10,
+    )
+
+    def __init__(self, key, store, draft_embed_fn, view_cls):
+        super().__init__()
+        self.key = key
+        self.store = store
+        self.draft_embed_fn = draft_embed_fn
+        self.view_cls = view_cls
+        # Pre-fill with current values
+        draft = store[key]
+        self.inspection_date.default = draft.inspection_date
+        self.site_contact_name.default = draft.site_contact_name
+        self.site_contact_phone.default = draft.site_contact_phone
+        self.am_pm.default = draft.am_pm
+
+    async def on_submit(self, interaction: discord.Interaction):
+        draft = self.store.get(self.key)
+        if not draft:
+            await interaction.response.send_message(
+                "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
+            )
+            return
+
+        try:
+            insp_date = resolve_date(self.inspection_date.value)
+        except ValueError as e:
+            await interaction.response.send_message(
+                f"⚠️ Inspection date — {e}", ephemeral=True
+            )
+            return
+
+        phone = validate_phone(self.site_contact_phone.value)
+        if phone is None:
+            await interaction.response.send_message(
+                "⚠️ Invalid phone number. Please include 7–15 digits "
+                "(e.g. `555-867-5309`, `(555) 867-5309`).",
+                ephemeral=True,
+            )
+            return
+
+        draft.inspection_date = insp_date
+        draft.site_contact_name = self.site_contact_name.value.strip()
+        draft.site_contact_phone = phone
+        draft.am_pm = self.am_pm.value.strip().upper()
+
+        await interaction.response.defer()
+        await interaction.message.edit(
+            embed=self.draft_embed_fn(interaction.user, draft),
+            view=self.view_cls(self.key),
+        )
+
+
+DraftView = make_draft_view(
+    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    edit_modal_factory=EditInspectionModal,
+)
 
 
 # ---------------------------------------------------------------------------
