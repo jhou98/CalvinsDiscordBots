@@ -30,6 +30,7 @@ class CalvinBot(commands.Bot):
                 init_db()
 
             await self.load_extension("src.cogs.change_order")
+            await self.load_extension("src.cogs.help")
             await self.load_extension("src.cogs.inspection_req")
             await self.load_extension("src.cogs.mat_order")
             await self.load_extension("src.cogs.rfi")
@@ -46,7 +47,7 @@ bot = CalvinBot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     log.info("Bot ready — logged in as %s", bot.user)
-    log.info("Commands synced: /changeorder, /inspectionreq, /matorder, /rfi")
+    log.info("Commands synced: /calvinhelp, /changeorder, /inspectionreq, /matorder, /rfi")
 
 
 bot.run(os.getenv("DISCORD_TOKEN"))
