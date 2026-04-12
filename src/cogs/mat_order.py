@@ -16,6 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import (
     discord_timestamp,
     format_materials,
@@ -35,7 +36,8 @@ from src.views.draft_view_base import (
 log = logging.getLogger(__name__)
 COMMAND = "matorder"
 
-drafts: dict[DraftKey, DraftMatOrder] = {}
+register_model(COMMAND, DraftMatOrder)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +158,7 @@ class MatOrderStep2Modal(discord.ui.Modal, title="Material Order — Step 2 of 2
                 drafts.pop(self.key, None)
                 return
             draft.materials = material_list
+        drafts.save(self.key)
 
         view = DraftView(self.key)
         await interaction.response.send_message(

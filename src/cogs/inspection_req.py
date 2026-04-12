@@ -18,6 +18,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import discord_timestamp, resolve_date, validate_phone
 from src.models.draft_inspection import DraftInspection
 from src.views.draft_view_base import (
@@ -45,7 +46,8 @@ INSPECTION_TYPES: list[str] = [
     "Service",
 ]
 
-drafts: dict[DraftKey, DraftInspection] = {}
+register_model(COMMAND, DraftInspection)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +216,7 @@ class InspectionStep2Modal(discord.ui.Modal, title="Inspection Request — Conta
 
         draft.site_contact_name = self.site_contact_name.value.strip()
         draft.site_contact_phone = phone
+        drafts.save(self.key)
 
         view = DraftView(self.key)
         await interaction.response.send_message(

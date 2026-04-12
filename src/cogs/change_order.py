@@ -4,10 +4,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from src.db.draft_store import DraftStore, register_model
 from src.helpers import discord_timestamp, format_materials, resolve_date, validate_materials
 from src.models.draft_change_order import DraftChangeOrder
 from src.views.draft_view_base import (
-    DraftKey,
     SweepMixin,
     check_existing_draft,
     draft_key,
@@ -17,7 +17,8 @@ from src.views.draft_view_base import (
 log = logging.getLogger(__name__)
 COMMAND = "changeorder"
 
-drafts: dict[DraftKey, DraftChangeOrder] = {}
+register_model(COMMAND, DraftChangeOrder)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------

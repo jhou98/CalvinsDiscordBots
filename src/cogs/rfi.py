@@ -29,6 +29,7 @@ from src.views.draft_view_base import (
     make_draft_view,
     make_select_then_modal,
 )
+from src.db.draft_store import DraftStore, register_model
 from src.views.edit_modal_base import EditModalBase
 
 log = logging.getLogger(__name__)
@@ -44,7 +45,8 @@ RFI_IMPACT_OPTIONS: list[str] = [
     "Minor",
 ]
 
-drafts: dict[DraftKey, DraftRfi] = {}
+register_model(COMMAND, DraftRfi)
+drafts: DraftStore = DraftStore.load_from_db(COMMAND)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +193,7 @@ class RfiStep2Modal(discord.ui.Modal, title="RFI — Step 2 of 2"):
         draft.questions = self.questions.value.strip()
         draft.issues = self.issues.value.strip()
         draft.proposed_solution = self.proposed_solution.value.strip()
+        drafts.save(self.key)
 
         view = DraftView(self.key)
         await interaction.response.send_message(
