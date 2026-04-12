@@ -29,6 +29,7 @@ from src.views.draft_view_base import (
     make_draft_view,
     make_select_then_modal,
 )
+from src.views.edit_modal_base import EditModalBase
 
 log = logging.getLogger(__name__)
 COMMAND = "rfi"
@@ -93,7 +94,52 @@ def _plain_text(user, draft: DraftRfi) -> str:
     return "\n".join(lines)
 
 
-DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, _plain_text)
+# ---------------------------------------------------------------------------
+# Edit modal — allows editing question details after creation.
+# Editable: questions, issues, proposed_solution
+# Non-editable: date_requested, requested_by, required_by, impact
+# ---------------------------------------------------------------------------
+
+
+class EditRfiModal(EditModalBase, title="Edit RFI Details"):
+    questions = discord.ui.TextInput(
+        label="Question (1–2 sentences)",
+        placeholder="Clear, specific question...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=500,
+    )
+    issues = discord.ui.TextInput(
+        label="Issue / Background",
+        placeholder="Why is this being asked?",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=1000,
+    )
+    proposed_solution = discord.ui.TextInput(
+        label="Proposed Solution (optional)",
+        placeholder="If you have one in mind...",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=1000,
+    )
+
+    def _pre_fill(self, draft):
+        self.questions.default = draft.questions
+        self.issues.default = draft.issues
+        self.proposed_solution.default = draft.proposed_solution
+
+    def _apply(self, draft) -> str | None:
+        draft.questions = self.questions.value.strip()
+        draft.issues = self.issues.value.strip()
+        draft.proposed_solution = self.proposed_solution.value.strip()
+        return None
+
+
+DraftView = make_draft_view(
+    drafts, COMMAND, _draft_embed, _final_embed, _plain_text,
+    edit_modal_factory=EditRfiModal,
+)
 
 
 # ---------------------------------------------------------------------------

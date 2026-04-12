@@ -28,6 +28,7 @@ from src.views.draft_view_base import (
     make_draft_view,
     make_select_then_modal,
 )
+from src.views.edit_modal_base import EditModalBase
 
 log = logging.getLogger(__name__)
 COMMAND = "inspectionreq"
@@ -88,7 +89,8 @@ def _plain_text(user, draft: DraftInspection) -> str:
             f"Inspection Date: {draft.inspection_date}",
             f"Type:            {draft.inspection_type}",
             f"AM / PM:         {draft.am_pm}",
-            f"Site Contact:    {draft.site_contact_name} — {draft.site_contact_phone}",
+            f"Contact Name:   {draft.site_contact_name}",
+            f"Contact Phone:  {draft.site_contact_phone}",
         ]
     )
 
@@ -100,7 +102,7 @@ def _plain_text(user, draft: DraftInspection) -> str:
 # ---------------------------------------------------------------------------
 
 
-class EditInspectionModal(discord.ui.Modal, title="Edit Inspection Request"):
+class EditInspectionModal(EditModalBase, title="Edit Inspection Request"):
     inspection_date = discord.ui.TextInput(
         label="Inspection Date",
         placeholder="MM/DD/YYYY",
@@ -126,54 +128,30 @@ class EditInspectionModal(discord.ui.Modal, title="Edit Inspection Request"):
         max_length=10,
     )
 
-    def __init__(self, key, store, draft_embed_fn, view_cls):
-        super().__init__()
-        self.key = key
-        self.store = store
-        self.draft_embed_fn = draft_embed_fn
-        self.view_cls = view_cls
-        # Pre-fill with current values
-        draft = store[key]
+    def _pre_fill(self, draft):
         self.inspection_date.default = draft.inspection_date
         self.site_contact_name.default = draft.site_contact_name
         self.site_contact_phone.default = draft.site_contact_phone
         self.am_pm.default = draft.am_pm
 
-    async def on_submit(self, interaction: discord.Interaction):
-        draft = self.store.get(self.key)
-        if not draft:
-            await interaction.response.send_message(
-                "⚠️ Draft expired. Please run `/inspectionreq` again.", ephemeral=True
-            )
-            return
-
+    def _apply(self, draft) -> str | None:
         try:
             insp_date = resolve_date(self.inspection_date.value)
         except ValueError as e:
-            await interaction.response.send_message(
-                f"⚠️ Inspection date — {e}", ephemeral=True
-            )
-            return
+            return f"⚠️ Inspection date — {e}"
 
         phone = validate_phone(self.site_contact_phone.value)
         if phone is None:
-            await interaction.response.send_message(
+            return (
                 "⚠️ Invalid phone number. Please include 7–15 digits "
-                "(e.g. `555-867-5309`, `(555) 867-5309`).",
-                ephemeral=True,
+                "(e.g. `555-867-5309`, `(555) 867-5309`)."
             )
-            return
 
         draft.inspection_date = insp_date
         draft.site_contact_name = self.site_contact_name.value.strip()
         draft.site_contact_phone = phone
         draft.am_pm = self.am_pm.value.strip().upper()
-
-        await interaction.response.defer()
-        await interaction.message.edit(
-            embed=self.draft_embed_fn(interaction.user, draft),
-            view=self.view_cls(self.key),
-        )
+        return None
 
 
 DraftView = make_draft_view(

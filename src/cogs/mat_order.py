@@ -79,7 +79,8 @@ def _plain_text(user, draft: DraftMatOrder) -> str:
         f"Date Requested: {draft.date_requested}",
         f"Requested By:   {draft.requested_by}",
         f"Required Date:  {draft.required_date}",
-        f"Site Contact:   {draft.site_contact_name} — {draft.site_contact_phone}",
+        f"Contact Name:  {draft.site_contact_name}",
+        f"Contact Phone: {draft.site_contact_phone}",
     ]
     if draft.delivery_notes:
         lines += ["", "Delivery Notes:", draft.delivery_notes]

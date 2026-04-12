@@ -11,16 +11,19 @@ from src.cogs.rfi import (
     COMMAND,
     RFI_IMPACT_OPTIONS,
     DraftView,
+    EditRfiModal,
     Rfi,
     RfiImpactSelectView,
     RfiStep1Modal,
     RfiStep1ModalOther,
     RfiStep2ContinueView,
     RfiStep2Modal,
+    _draft_embed,
     drafts,
 )
 from src.models.draft_rfi import DraftRfi
 from src.views.draft_view_base import DRAFT_TTL_SECONDS, SubmittedView, draft_key
+from tests.conftest import make_interaction
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -314,3 +317,86 @@ def test_rfi_impact_options_is_a_list():
 def test_other_not_in_rfi_impact_options():
     """'Other' should be appended by make_select_then_modal, not hardcoded."""
     assert "Other" not in RFI_IMPACT_OPTIONS
+
+
+# ---------------------------------------------------------------------------
+# EditRfiModal
+# ---------------------------------------------------------------------------
+
+
+class TestEditRfiModal:
+    def setup_method(self):
+        _clear_drafts()
+
+    def _make_modal(
+        self,
+        key=_TEST_KEY,
+        questions="Updated question?",
+        issues="Updated issue",
+        solution="Updated solution",
+    ):
+        modal = EditRfiModal(key, drafts, _draft_embed, DraftView)
+        modal.questions = MagicMock(value=questions)
+        modal.issues = MagicMock(value=issues)
+        modal.proposed_solution = MagicMock(value=solution)
+        return modal
+
+    async def test_pre_fills_from_draft(self):
+        draft = _seed_draft()
+        modal = EditRfiModal(_TEST_KEY, drafts, _draft_embed, DraftView)
+        assert modal.questions.default == draft.questions
+        assert modal.issues.default == draft.issues
+        assert modal.proposed_solution.default == draft.proposed_solution
+
+    async def test_updates_draft_on_submit(self):
+        _seed_draft()
+        interaction, msg = make_interaction()
+        interaction.message = msg
+        await self._make_modal(
+            questions="New question?", issues="New issue", solution="New solution"
+        ).on_submit(interaction)
+        draft = drafts[_TEST_KEY]
+        assert draft.questions == "New question?"
+        assert draft.issues == "New issue"
+        assert draft.proposed_solution == "New solution"
+
+    async def test_clears_solution_when_blank(self):
+        _seed_draft()
+        interaction, msg = make_interaction()
+        interaction.message = msg
+        await self._make_modal(solution="").on_submit(interaction)
+        assert drafts[_TEST_KEY].proposed_solution == ""
+
+    async def test_refreshes_embed_on_submit(self):
+        _seed_draft()
+        interaction, msg = make_interaction()
+        interaction.message = msg
+        await self._make_modal().on_submit(interaction)
+        msg.edit.assert_called_once()
+
+    async def test_missing_draft_sends_ephemeral(self):
+        _seed_draft()
+        modal = self._make_modal()
+        _clear_drafts()
+        interaction, _ = make_interaction()
+        await modal.on_submit(interaction)
+        assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+
+
+# ---------------------------------------------------------------------------
+# DraftView has Edit button
+# ---------------------------------------------------------------------------
+
+
+class TestRfiDraftViewEditButton:
+    async def test_edit_button_present(self):
+        view = DraftView(_TEST_KEY)
+        labels = [c.label for c in view.children]
+        assert "✏️ Edit" in labels
+
+    async def test_done_cancel_on_row_1(self):
+        view = DraftView(_TEST_KEY)
+        done_btn = next(c for c in view.children if c.label == "✅ Done")
+        cancel_btn = next(c for c in view.children if c.label == "🗑️ Cancel")
+        assert done_btn.row == 1
+        assert cancel_btn.row == 1
