@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.2.0...v1.2.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* Use interaction webhook token to allow bot access and avoid 403 Forbidden errors ([7e66ab1](https://github.com/jhou98/CalvinsDiscordBots/commit/7e66ab125bfe4fa0e3778a046e4156f36f232dc3))
+
 ## [1.2.0](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.1.0...v1.2.0) (2026-04-12)
 
 
