@@ -257,9 +257,8 @@ class TestAddMaterialModal:
     async def test_edits_message_on_success(self, mock_interaction):
         store, _ = self._store_and_draft()
         mock_interaction.message = MagicMock(spec=discord.Message)
-        mock_interaction.message.edit = AsyncMock()
         await self._make_modal(store).on_submit(mock_interaction)
-        mock_interaction.message.edit.assert_called_once()
+        mock_interaction.response.edit_message.assert_called_once()
 
     async def test_missing_separator_sends_ephemeral(self, mock_interaction):
         store, _ = self._store_and_draft()
@@ -447,7 +446,9 @@ class TestMakeDraftViewSimple:
         interaction, msg = make_interaction()
         interaction.message = msg
         await View(_TEST_KEY).done.callback(interaction)
-        assert isinstance(msg.edit.call_args.kwargs.get("view"), SubmittedView)
+        assert isinstance(
+            interaction.response.edit_message.call_args.kwargs.get("view"), SubmittedView
+        )
 
     async def test_done_missing_draft_sends_ephemeral(self):
         _, _, View = self._setup()

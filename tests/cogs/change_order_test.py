@@ -226,7 +226,7 @@ class TestDraftViewDone:
         drafts[_TEST_KEY].materials = [("Breaker", "2")]
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        edited_embed = mock_message.edit.call_args.kwargs.get("embed")
+        edited_embed = mock_interaction.response.edit_message.call_args.kwargs.get("embed")
         assert isinstance(edited_embed, discord.Embed)
         assert "Submitted" in edited_embed.title
 
@@ -235,7 +235,9 @@ class TestDraftViewDone:
         drafts[_TEST_KEY].materials = [("Breaker", "2")]
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        assert isinstance(mock_message.edit.call_args.kwargs.get("view"), SubmittedView)
+        assert isinstance(
+            mock_interaction.response.edit_message.call_args.kwargs.get("view"), SubmittedView
+        )
 
     async def test_done_no_materials_sends_ephemeral(self, mock_interaction, mock_message):
         _seed_draft()

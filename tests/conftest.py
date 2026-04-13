@@ -36,6 +36,7 @@ def mock_interaction(mock_user, mock_message):
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()
     interaction.response.defer = AsyncMock()
+    interaction.response.edit_message = AsyncMock()
     interaction.original_response = AsyncMock(return_value=mock_message)
     return interaction
 
@@ -55,6 +56,7 @@ def make_interaction(user_id="123456789", channel_id="222"):
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()
     interaction.response.defer = AsyncMock()
+    interaction.response.edit_message = AsyncMock()
     interaction.original_response = AsyncMock(return_value=mock_message)
     interaction.message = mock_message
     return interaction, mock_message

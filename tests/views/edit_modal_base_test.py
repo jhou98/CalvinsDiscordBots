@@ -70,7 +70,7 @@ class TestEditModalBase:
         interaction, msg = make_interaction(user_id="111", channel_id="222")
         interaction.message = msg
         await modal.on_submit(interaction)
-        msg.edit.assert_called_once()
+        interaction.response.edit_message.assert_called_once()
 
     async def test_apply_error_sends_ephemeral(self):
         store, embed_fn, view_cls = _make_store()
@@ -87,7 +87,7 @@ class TestEditModalBase:
         interaction, msg = make_interaction(user_id="111", channel_id="222")
         interaction.message = msg
         await modal.on_submit(interaction)
-        msg.edit.assert_not_called()
+        interaction.response.edit_message.assert_not_called()
 
     async def test_missing_draft_sends_ephemeral(self):
         store, embed_fn, view_cls = _make_store()
@@ -103,5 +103,5 @@ class TestEditModalBase:
         store.clear()
         interaction, _ = make_interaction(user_id="111", channel_id="222")
         await modal.on_submit(interaction)
-        # _apply would call defer after updating — verify it wasn't reached
-        interaction.response.defer.assert_not_called()
+        # _apply would call edit_message after updating — verify it wasn't reached
+        interaction.response.edit_message.assert_not_called()
