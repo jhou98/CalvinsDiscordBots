@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.2.1...v1.2.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* Removing numeric check on quantity to allow for text input ([#15](https://github.com/jhou98/CalvinsDiscordBots/issues/15)) ([664fce4](https://github.com/jhou98/CalvinsDiscordBots/commit/664fce41135149e28f7d1c1be888d4a44c296d26))
+
 ## [1.2.1](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.2.0...v1.2.1) (2026-04-13)
 
 
