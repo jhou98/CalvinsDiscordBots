@@ -176,8 +176,7 @@ class AddMaterialModal(discord.ui.Modal, title="Add Materials"):
         draft.materials.extend(material_list)
         if hasattr(self.store, "save"):
             self.store.save(self.draft_key)
-        await interaction.response.defer()
-        await interaction.message.edit(
+        await interaction.response.edit_message(
             embed=self.draft_embed_fn(interaction.user, draft),
             view=self.view_cls(self.draft_key),
         )
@@ -306,13 +305,12 @@ def make_draft_view(
                 ephemeral=True,
             )
             return
-        store.pop(self_view.key)
-        await interaction.response.defer()
-        await interaction.message.edit(
+        await interaction.response.edit_message(
             content="✅ Submitted!",
             embed=final_embed_fn(interaction.user, draft),
             view=SubmittedView(plain_text_fn(interaction.user, draft)),
         )
+        store.pop(self_view.key, None)
         log.info(
             "%s submitted by user %s in channel %s",
             command_name,
@@ -323,11 +321,12 @@ def make_draft_view(
     async def _cancel(self_view, interaction: discord.Interaction):
         if await _check_expired(self_view, interaction):
             return
-        store.pop(self_view.key, None)
         for child in self_view.children:
             child.disabled = True
-        await interaction.response.defer()
-        await interaction.message.edit(content="🗑️ Request cancelled.", embed=None, view=self_view)
+        await interaction.response.edit_message(
+            content="🗑️ Request cancelled.", embed=None, view=self_view
+        )
+        store.pop(self_view.key, None)
         log.info(
             "%s cancelled by user %s in channel %s",
             command_name,
@@ -415,8 +414,7 @@ def make_draft_view(
                 draft.materials.pop()
                 if hasattr(store, "save"):
                     store.save(self.key)
-                await interaction.response.defer()
-                await interaction.message.edit(
+                await interaction.response.edit_message(
                     embed=draft_embed_fn(interaction.user, draft),
                     view=DraftViewWithMaterials(self.key),
                 )

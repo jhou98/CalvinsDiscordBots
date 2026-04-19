@@ -248,13 +248,15 @@ class TestRfiDraftViewDone:
         _seed_draft()
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        assert isinstance(mock_message.edit.call_args.kwargs.get("view"), SubmittedView)
+        assert isinstance(
+            mock_interaction.response.edit_message.call_args.kwargs.get("view"), SubmittedView
+        )
 
     async def test_done_final_embed_title(self, mock_interaction, mock_message):
         _seed_draft()
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        embed = mock_message.edit.call_args.kwargs.get("embed")
+        embed = mock_interaction.response.edit_message.call_args.kwargs.get("embed")
         assert "Submitted" in embed.title
 
 
@@ -372,7 +374,7 @@ class TestEditRfiModal:
         interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal().on_submit(interaction)
-        msg.edit.assert_called_once()
+        interaction.response.edit_message.assert_called_once()
 
     async def test_missing_draft_sends_ephemeral(self):
         _seed_draft()

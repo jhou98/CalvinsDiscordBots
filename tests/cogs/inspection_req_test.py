@@ -357,7 +357,7 @@ class TestEditInspectionModal:
         interaction, msg = make_interaction()
         interaction.message = msg
         await self._make_modal().on_submit(interaction)
-        msg.edit.assert_called_once()
+        interaction.response.edit_message.assert_called_once()
 
     async def test_invalid_date_rejected(self):
         _seed_draft()

@@ -257,7 +257,9 @@ class TestMatOrderDraftViewDone:
         drafts[_TEST_KEY].materials = [("Conduit", "10")]
         mock_interaction.message = mock_message
         await DraftView(_TEST_KEY).done.callback(mock_interaction)
-        assert isinstance(mock_message.edit.call_args.kwargs.get("view"), SubmittedView)
+        assert isinstance(
+            mock_interaction.response.edit_message.call_args.kwargs.get("view"), SubmittedView
+        )
 
 
 # ---------------------------------------------------------------------------
