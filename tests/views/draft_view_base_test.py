@@ -265,10 +265,10 @@ class TestAddMaterialModal:
         await self._make_modal(store, "BadLine").on_submit(mock_interaction)
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
-    async def test_non_numeric_quantity_sends_ephemeral(self, mock_interaction):
-        store, _ = self._store_and_draft()
+    async def test_non_numeric_quantity_creates_draft(self, mock_interaction):
+        store, draft = self._store_and_draft()
         await self._make_modal(store, "Breaker - lots").on_submit(mock_interaction)
-        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
+        assert ("Breaker", "lots") in draft.materials
 
     async def test_mixed_valid_invalid_sends_ephemeral(self, mock_interaction):
         store, _ = self._store_and_draft()

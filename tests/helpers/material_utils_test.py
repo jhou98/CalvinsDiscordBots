@@ -91,17 +91,15 @@ class TestValidateMaterials:
         assert error is not None
         assert "Missing quantity" in error
 
-    def test_non_numeric_quantity_returns_error(self):
+    def test_non_numeric_quantity_succeeds(self):
         materials, error = validate_materials("Breaker - lots")
-        assert materials == []
-        assert error is not None
-        assert "Non-numeric" in error
+        assert materials == [("Breaker", "lots")]
+        assert error is None
 
     def test_mixed_errors_returns_all(self):
         materials, error = validate_materials("BadLine\nBreaker - lots")
         assert materials == []
         assert "Missing quantity" in error
-        assert "Non-numeric" in error
 
     def test_empty_string(self):
         materials, error = validate_materials("")
