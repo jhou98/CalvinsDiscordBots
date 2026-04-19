@@ -146,13 +146,11 @@ class TestScopeModal:
         await self._make_modal(materials_text="BadLine").on_submit(mock_interaction)
         assert draft_key(mock_interaction, COMMAND) not in drafts
 
-    async def test_non_numeric_initial_quantity_sends_ephemeral(self, mock_interaction):
+    async def test_non_numeric_initial_quantity_creates_draft(self, mock_interaction):
         await self._make_modal(materials_text="Breaker - lots").on_submit(mock_interaction)
-        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
-
-    async def test_non_numeric_initial_quantity_does_not_create_draft(self, mock_interaction):
-        await self._make_modal(materials_text="Breaker - lots").on_submit(mock_interaction)
-        assert draft_key(mock_interaction, COMMAND) not in drafts
+        assert draft_key(mock_interaction, COMMAND) in drafts
+        materials = drafts[draft_key(mock_interaction, COMMAND)].materials
+        assert ("Breaker", "lots") in materials
 
     async def test_draft_message_stored(self, mock_interaction, mock_message):
         await self._make_modal().on_submit(mock_interaction)

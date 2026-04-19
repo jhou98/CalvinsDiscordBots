@@ -2,8 +2,6 @@
 Material parsing, formatting, and validation utilities.
 """
 
-from src.helpers.validation_utils import is_numeric
-
 
 def parse_materials(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
     """
@@ -40,9 +38,8 @@ def validate_materials(raw: str) -> tuple[list[tuple[str, str]], str | None]:
     On success error_message is None. On failure the list is empty.
     """
     material_list, parse_errors = parse_materials(raw)
-    non_numeric = [f"`{name} - {qty}`" for name, qty in material_list if not is_numeric(qty)]
 
-    if not parse_errors and not non_numeric:
+    if not parse_errors:
         return material_list, None
 
     error_lines: list[str] = []
@@ -51,11 +48,9 @@ def validate_materials(raw: str) -> tuple[list[tuple[str, str]], str | None]:
             "**Missing quantity** (expected `Name - Quantity`):\n"
             + "\n".join(f"• `{e}`" for e in parse_errors)
         )
-    if non_numeric:
-        error_lines.append("**Non-numeric quantity:**\n" + "\n".join(f"• {e}" for e in non_numeric))
     error_msg = (
         "⚠️ Some lines couldn't be added:\n\n"
         + "\n\n".join(error_lines)
-        + "\n\nUse the format `Name - Quantity` with a numeric quantity."
+        + "\n\nUse the format `Name - Quantity`."
     )
     return [], error_msg
