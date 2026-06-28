@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.2.2...v1.3.0) (2026-06-28)
+
+
+### Features
+
+* updating copy text from embed to be on runtime instead of storing in RAM ([#17](https://github.com/jhou98/CalvinsDiscordBots/issues/17)) ([118b16e](https://github.com/jhou98/CalvinsDiscordBots/commit/118b16e64db2d0418f37177afd09e40bb9451dd1))
+
 ## [1.2.2](https://github.com/jhou98/CalvinsDiscordBots/compare/v1.2.1...v1.2.2) (2026-04-19)
 
 
