@@ -59,7 +59,7 @@ def _embed(user, draft: DraftInspection, *, title: str, color: discord.Color) ->
     embed = discord.Embed(title=title, color=color)
     embed.add_field(name="📅 Date Requested", value=draft.date_requested, inline=True)
     embed.add_field(name="🕐 Submitted At", value=draft.submitted_at, inline=True)
-    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
+    embed.add_field(name="👤 Submitted By", value=user.display_name, inline=True)
     embed.add_field(name="📆 Inspection Date", value=draft.inspection_date, inline=True)
     embed.add_field(name="🔍 Inspection Type", value=draft.inspection_type, inline=True)
     embed.add_field(name="🌅 AM / PM", value=draft.am_pm, inline=True)
@@ -79,21 +79,6 @@ def _draft_embed(user, draft: DraftInspection) -> discord.Embed:
 def _final_embed(user, draft: DraftInspection) -> discord.Embed:
     return _embed(
         user, draft, title="📋 Inspection Request — Submitted", color=discord.Color.green()
-    )
-
-
-def _plain_text(user, draft: DraftInspection) -> str:
-    return "\n".join(
-        [
-            "INSPECTION REQUEST",
-            f"Date Requested:  {draft.date_requested}",
-            f"Submitted By:    {user.display_name}",
-            f"Inspection Date: {draft.inspection_date}",
-            f"Type:            {draft.inspection_type}",
-            f"AM / PM:         {draft.am_pm}",
-            f"Contact Name:   {draft.site_contact_name}",
-            f"Contact Phone:  {draft.site_contact_phone}",
-        ]
     )
 
 
@@ -161,7 +146,6 @@ DraftView = make_draft_view(
     COMMAND,
     _draft_embed,
     _final_embed,
-    _plain_text,
     edit_modal_factory=EditInspectionModal,
 )
 

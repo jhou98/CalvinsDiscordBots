@@ -41,7 +41,7 @@ def _build_change_order_embed(
     embed = discord.Embed(title=title, color=color)
     embed.add_field(name="📅 Date Requested", value=date_requested, inline=True)
     embed.add_field(name="🕐 Submitted At", value=submitted_at, inline=True)
-    embed.add_field(name="👤 Submitted By", value=user.mention, inline=True)
+    embed.add_field(name="👤 Submitted By", value=user.display_name, inline=True)
     embed.add_field(name="🔧 Scope Added", value=scope, inline=False)
     embed.add_field(
         name=f"📦 Materials ({len(material_list)} item{'s' if len(material_list) != 1 else ''})",
@@ -50,29 +50,6 @@ def _build_change_order_embed(
     )
     embed.set_footer(text="Change Order System")
     return embed
-
-
-def _format_plain_text(
-    user: discord.User | discord.Member,
-    date_requested: str,
-    scope: str,
-    material_list: list[tuple[str, str]],
-) -> str:
-    lines = [
-        "CHANGE ORDER",
-        f"Date Requested: {date_requested}",
-        f"Submitted By:   {user.display_name}",
-        "",
-        "Scope Added:",
-        scope,
-        "",
-        "Materials:",
-    ]
-    if material_list:
-        lines += [f"  {name} - {qty}" for name, qty in material_list]
-    else:
-        lines.append("  No materials listed.")
-    return "\n".join(lines)
 
 
 def _draft_embed(user, draft: DraftChangeOrder) -> discord.Embed:
@@ -99,18 +76,7 @@ def _final_embed(user, draft: DraftChangeOrder) -> discord.Embed:
     )
 
 
-def _plain_text(user, draft: DraftChangeOrder) -> str:
-    return _format_plain_text(
-        user=user,
-        date_requested=draft.date_requested,
-        scope=draft.scope,
-        material_list=draft.materials,
-    )
-
-
-DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text, has_materials=True
-)
+DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, has_materials=True)
 
 
 # ---------------------------------------------------------------------------

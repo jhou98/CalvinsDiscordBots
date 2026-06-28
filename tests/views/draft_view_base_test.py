@@ -18,6 +18,7 @@ from src.views.draft_view_base import (
     AddMaterialModal,
     SubmittedView,
     draft_key,
+    embed_to_plain_text,
     evict,
     is_expired,
     make_draft_view,
@@ -175,35 +176,125 @@ class TestDraftKey:
 # ---------------------------------------------------------------------------
 
 
+def _embed_message(embed: discord.Embed) -> MagicMock:
+    """A mock message carrying a single embed, as the Copy Text button reads."""
+    message = MagicMock(spec=discord.Message)
+    message.embeds = [embed]
+    return message
+
+
+def _submitted_embed() -> discord.Embed:
+    embed = discord.Embed(title="📋 RFI — Submitted")
+    embed.add_field(name="👤 Requested By", value="Jane", inline=True)
+    embed.add_field(name="❓ Question", value="Line one\nLine two", inline=False)
+    return embed
+
+
+class TestEmbedToPlainText:
+    def test_includes_title_without_emoji(self):
+        assert embed_to_plain_text(_submitted_embed()).startswith("RFI — Submitted")
+
+    def test_single_line_field_inline_without_emoji(self):
+        assert "Requested By: Jane" in embed_to_plain_text(_submitted_embed())
+
+    def test_multiline_field_on_own_lines_without_emoji(self):
+        text = embed_to_plain_text(_submitted_embed())
+        assert "Question:\nLine one\nLine two" in text
+
+    def test_strips_leading_emoji_from_names(self):
+        text = embed_to_plain_text(_submitted_embed())
+        assert "👤" not in text
+        assert "❓" not in text
+        assert "📋" not in text
+
+    def test_preserves_internal_punctuation(self):
+        embed = discord.Embed(title="📋 RFI — Submitted")
+        embed.add_field(name="🌅 AM / PM", value="AM", inline=True)
+        text = embed_to_plain_text(embed)
+        assert "RFI — Submitted" in text
+        assert "AM / PM: AM" in text
+
+    def test_humanizes_discord_timestamp(self):
+        embed = discord.Embed(title="📋 RFI — Submitted")
+        embed.add_field(name="🕐 Submitted At", value="<t:1782660711:F>", inline=True)
+        text = embed_to_plain_text(embed)
+        assert "<t:" not in text
+        assert "Submitted At: June 28, 2026 03:31 PM UTC" in text
+
+    def test_unwraps_material_markdown(self):
+        embed = discord.Embed(title="📋 Material Order — Submitted")
+        embed.add_field(name="📦 Materials (1 item)", value="`asd` — **1**", inline=False)
+        text = embed_to_plain_text(embed)
+        assert "Materials (1 item): asd — 1" in text
+        assert "`" not in text
+        assert "**" not in text
+
+    def test_unwraps_multiple_markdown_styles(self):
+        embed = discord.Embed()
+        embed.add_field(name="Notes", value="__under__ ~~strike~~ *italic* _also_", inline=False)
+        text = embed_to_plain_text(embed)
+        assert "Notes: under strike italic also" in text
+
+    def test_preserves_unpaired_markdown_chars(self):
+        embed = discord.Embed()
+        embed.add_field(name="Notes", value="2 * 3 = 6", inline=False)
+        text = embed_to_plain_text(embed)
+        assert "2 * 3 = 6" in text
+
+    def test_preserves_intraword_underscores(self):
+        embed = discord.Embed()
+        embed.add_field(name="Notes", value="conduit_run_3 needs review", inline=False)
+        text = embed_to_plain_text(embed)
+        assert "conduit_run_3 needs review" in text
+
+    def test_empty_embed_is_empty_string(self):
+        assert embed_to_plain_text(discord.Embed()) == ""
+
+
 class TestSubmittedView:
     async def test_copy_text_sends_ephemeral(self, mock_interaction):
-        view = SubmittedView("hello")
-        await view.copy_text.callback(mock_interaction)
+        mock_interaction.message = _embed_message(_submitted_embed())
+        await SubmittedView().copy_text.callback(mock_interaction)
         assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_copy_text_wraps_in_code_block(self, mock_interaction):
-        view = SubmittedView("hello")
-        await view.copy_text.callback(mock_interaction)
+        mock_interaction.message = _embed_message(_submitted_embed())
+        await SubmittedView().copy_text.callback(mock_interaction)
         sent = mock_interaction.response.send_message.call_args.args[0]
         assert sent.startswith("```") and sent.endswith("```")
 
-    async def test_copy_text_contains_plain_text(self, mock_interaction):
-        view = SubmittedView("specific content")
-        await view.copy_text.callback(mock_interaction)
+    async def test_copy_text_renders_embed_content(self, mock_interaction):
+        mock_interaction.message = _embed_message(_submitted_embed())
+        await SubmittedView().copy_text.callback(mock_interaction)
         sent = mock_interaction.response.send_message.call_args.args[0]
-        assert "specific content" in sent
+        assert "Requested By: Jane" in sent
+
+    async def test_copy_text_no_embed_warns(self, mock_interaction):
+        message = MagicMock(spec=discord.Message)
+        message.embeds = []
+        mock_interaction.message = message
+        await SubmittedView().copy_text.callback(mock_interaction)
+        sent = mock_interaction.response.send_message.call_args.args[0]
+        assert "Nothing to copy" in sent
+        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
 
     async def test_any_user_can_copy(self, mock_interaction):
         """No interaction_check — open to all channel members."""
         other_user = MagicMock(spec=discord.Member)
         other_user.id = "999"
         mock_interaction.user = other_user
-        view = SubmittedView("text")
-        await view.copy_text.callback(mock_interaction)
+        mock_interaction.message = _embed_message(_submitted_embed())
+        await SubmittedView().copy_text.callback(mock_interaction)
         mock_interaction.response.send_message.assert_called_once()
 
     async def test_no_timeout(self):
-        assert SubmittedView("text").timeout is None
+        assert SubmittedView().timeout is None
+
+    async def test_is_persistent(self):
+        """timeout=None + a custom_id on every item makes the view persistent."""
+        view = SubmittedView()
+        assert view.is_persistent()
+        assert view.copy_text.custom_id == "submitted_view:copy_text"
 
 
 # ---------------------------------------------------------------------------
@@ -405,9 +496,8 @@ class TestMakeDraftViewSimple:
 
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn = MagicMock(return_value="plain text")
 
-        View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=False)
+        View = make_draft_view(store, "testcmd", embed_fn, final_fn, has_materials=False)
         return store, draft, View
 
     async def test_no_timeout(self):
@@ -464,8 +554,7 @@ class TestMakeDraftViewSimple:
         store[_TEST_KEY] = draft
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn = MagicMock(return_value="")
-        View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=False)
+        View = make_draft_view(store, "testcmd", embed_fn, final_fn, has_materials=False)
         interaction, _ = make_interaction()
         await View(_TEST_KEY).done.callback(interaction)
         assert interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
@@ -512,9 +601,8 @@ class TestMakeDraftViewWithMaterials:
 
         embed_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
         final_fn = MagicMock(return_value=MagicMock(spec=discord.Embed))
-        text_fn = MagicMock(return_value="plain text")
 
-        View = make_draft_view(store, "testcmd", embed_fn, final_fn, text_fn, has_materials=True)
+        View = make_draft_view(store, "testcmd", embed_fn, final_fn, has_materials=True)
         return store, draft, View
 
     async def test_has_material_buttons(self):
