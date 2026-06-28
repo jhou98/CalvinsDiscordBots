@@ -3,7 +3,7 @@ Shared draft-view infrastructure used by every slash command.
 
 Each cog:
   1. Defines its own `drafts` dict keyed by DraftKey
-  2. Defines _draft_embed(), _final_embed(), _plain_text() functions
+  2. Defines _draft_embed() and _final_embed() functions
   3. Calls make_draft_view() to get a ready-to-use DraftView class
   4. Calls make_select_then_modal() for any field that needs a select-first flow
   5. Mixes SweepMixin into its Cog for background TTL eviction
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -34,7 +35,6 @@ SWEEP_INTERVAL_MINS = 60  # background sweep cadence
 DraftKey = tuple[str, str, str]
 
 EmbedBuilder = Callable[[discord.Member, DraftBase], discord.Embed]
-TextBuilder = Callable[[discord.Member, DraftBase], str]
 
 
 # ---------------------------------------------------------------------------
@@ -101,22 +101,113 @@ async def check_existing_draft(
 # ---------------------------------------------------------------------------
 
 
+# Field names and titles are decorated with a leading emoji + space (e.g.
+# "📅 Date Requested"). Strip that leading run of non-word characters for the
+# plain-text copy. Anchored to the start, so internal punctuation like the "—"
+# in titles or the "/" in "AM / PM" is preserved.
+_LEADING_DECORATION_RE = re.compile(r"^\W+")
+
+# Discord renders <t:UNIX:STYLE> as a localized date in the embed, but the raw
+# token leaks through when copied as plain text. Match it so we can humanize it.
+_DISCORD_TS_RE = re.compile(r"<t:(\d+)(?::[tTdDfFR])?>")
+
+# Discord inline-markdown wrappers used in embed values (e.g. format_materials
+# emits `name` — **qty**). Unwrap matched pairs for the plain-text copy. Order
+# matters: multi-char markers must run before their single-char counterparts.
+# Only paired markers are touched, so a stray "*" or "_" in free text survives.
+_MARKDOWN_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\*\*\*(.+?)\*\*\*", re.S),  # bold italic
+    re.compile(r"\*\*(.+?)\*\*", re.S),  # bold
+    re.compile(r"___(.+?)___", re.S),  # underline italic
+    re.compile(r"__(.+?)__", re.S),  # underline
+    re.compile(r"~~(.+?)~~", re.S),  # strikethrough
+    re.compile(r"`([^`]+)`"),  # inline code
+    re.compile(r"\*(.+?)\*", re.S),  # italic
+    re.compile(r"(?<!\w)_(.+?)_(?!\w)", re.S),  # italic (word-boundary, like Discord)
+]
+
+
+def _strip_decoration(text: str) -> str:
+    return _LEADING_DECORATION_RE.sub("", text.strip())
+
+
+def _humanize_timestamps(value: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        dt = datetime.fromtimestamp(int(match.group(1)), tz=UTC)
+        return dt.strftime("%B %d, %Y %I:%M %p UTC")
+
+    return _DISCORD_TS_RE.sub(repl, value)
+
+
+def _strip_markdown(value: str) -> str:
+    for pattern in _MARKDOWN_PATTERNS:
+        value = pattern.sub(r"\1", value)
+    return value
+
+
+def embed_to_plain_text(embed: discord.Embed) -> str:
+    """
+    Render an embed's title and fields into a plain-text block for copying.
+
+    Generic and command-agnostic: it walks whatever fields the embed actually
+    has, so it works for every command's submitted message — and keeps working
+    if a command's embed layout changes or new commands are added, with no code
+    changes here. Single-line field values render as ``Name: value``; multi-line
+    values go on their own lines beneath the field name.
+
+    Leading decorative emojis are stripped from titles and field names, Discord
+    timestamp tokens (``<t:…>``) in values are rendered as readable UTC dates,
+    and inline-markdown wrappers (bold, italic, code, …) are unwrapped, so the
+    copied text is clean rather than showing raw markup.
+    """
+    lines: list[str] = []
+    if embed.title:
+        lines.append(_strip_decoration(embed.title))
+    for field in embed.fields:
+        name = _strip_decoration(field.name or "")
+        value = _strip_markdown(_humanize_timestamps((field.value or "").strip()))
+        if "\n" in value:
+            lines += ["", f"{name}:", value]
+        else:
+            lines.append(f"{name}: {value}")
+    return "\n".join(lines)
+
+
 class SubmittedView(discord.ui.View):
     """
     Replaces DraftView once a request is submitted.
+
+    Persistent (``timeout=None`` plus a stable ``custom_id``) so the Copy Text
+    button keeps working after a bot restart. Register a single instance once at
+    startup via ``bot.add_view(SubmittedView())`` and it handles every submitted
+    message. The button rebuilds the text straight from the message embed via
+    ``embed_to_plain_text`` rather than from stored state, so there is nothing to
+    persist and nothing to keep in sync as embeds evolve.
+
     The Copy Text button is intentionally open to all channel members so
     teammates can grab the plain-text output without needing to have been
     the original submitter.
     """
 
-    def __init__(self, plain_text: str):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.plain_text = plain_text
 
-    @discord.ui.button(label="⚡ Copy Text", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(
+        label="⚡ Copy Text",
+        style=discord.ButtonStyle.secondary,
+        custom_id="submitted_view:copy_text",
+    )
     async def copy_text(self, interaction: discord.Interaction, button: discord.ui.Button):
+        message = interaction.message
+        if message is None or not message.embeds:
+            await interaction.response.send_message(
+                "⚠️ Nothing to copy — this message has no content.",
+                ephemeral=True,
+            )
+            return
+        text = embed_to_plain_text(message.embeds[0])
         await interaction.response.send_message(
-            f"```\n{self.plain_text}\n```",
+            f"```\n{text}\n```",
             ephemeral=True,
         )
 
@@ -245,7 +336,6 @@ def make_draft_view(
     command_name: str,
     draft_embed_fn: EmbedBuilder,
     final_embed_fn: EmbedBuilder,
-    plain_text_fn: TextBuilder,
     *,
     has_materials: bool = False,
     edit_modal_factory: type | None = None,
@@ -308,7 +398,7 @@ def make_draft_view(
         await interaction.response.edit_message(
             content="✅ Submitted!",
             embed=final_embed_fn(interaction.user, draft),
-            view=SubmittedView(plain_text_fn(interaction.user, draft)),
+            view=SubmittedView(),
         )
         store.pop(self_view.key, None)
         log.info(

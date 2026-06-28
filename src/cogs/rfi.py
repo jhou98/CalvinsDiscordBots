@@ -77,25 +77,6 @@ def _final_embed(user, draft: DraftRfi) -> discord.Embed:
     return _embed(user, draft, title="📋 RFI — Submitted", color=discord.Color.green())
 
 
-def _plain_text(user, draft: DraftRfi) -> str:
-    lines = [
-        "REQUEST FOR INFORMATION (RFI)",
-        f"Date Requested: {draft.date_requested}",
-        f"Requested By:   {draft.requested_by}",
-        f"Required By:    {draft.required_by}",
-        f"Impact:         {draft.impact}",
-        "",
-        "Question:",
-        draft.questions,
-        "",
-        "Issue:",
-        draft.issues,
-    ]
-    if draft.proposed_solution:
-        lines += ["", "Proposed Solution:", draft.proposed_solution]
-    return "\n".join(lines)
-
-
 # ---------------------------------------------------------------------------
 # Edit modal — allows editing question details after creation.
 # Editable: questions, issues, proposed_solution
@@ -143,7 +124,6 @@ DraftView = make_draft_view(
     COMMAND,
     _draft_embed,
     _final_embed,
-    _plain_text,
     edit_modal_factory=EditRfiModal,
 )
 

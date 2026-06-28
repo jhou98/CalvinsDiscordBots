@@ -34,6 +34,13 @@ class CalvinBot(commands.Bot):
             await self.load_extension("src.cogs.inspection_req")
             await self.load_extension("src.cogs.mat_order")
             await self.load_extension("src.cogs.rfi")
+
+            # Re-register the persistent Copy Text view so its button keeps
+            # working on submitted messages posted before this restart.
+            from src.views.draft_view_base import SubmittedView
+
+            self.add_view(SubmittedView())
+
             await self.tree.sync()
             log.info("-- Setup hook complete --")
         except Exception:

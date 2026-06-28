@@ -32,9 +32,20 @@ Checks for an existing draft (evicting it first if expired). Returns `True` and 
 
 ### `SubmittedView`
 
-Replaces `DraftView` once a request is finalised. Contains a single **⚡ Copy Text** button that sends the plain-text representation of the submitted request as an ephemeral message. Open to any user in the channel — not restricted to the original submitter.
+Replaces `DraftView` once a request is finalised. Contains a single **⚡ Copy Text** button that, when clicked, rebuilds a plain-text version of the request **from the message's own embed** (via `embed_to_plain_text`) and sends it as an ephemeral code block. Nothing is stored — the message embed is the single source of truth, so copy never drifts from what is shown and survives new/changed commands with no extra code.
 
-No timeout.
+Open to any user in the channel — not restricted to the original submitter.
+
+**Persistent.** `timeout=None` plus a stable `custom_id` on the button. Register one instance once at startup so the button keeps working on messages posted before a restart:
+
+```python
+from src.views.draft_view_base import SubmittedView
+bot.add_view(SubmittedView())   # in setup_hook
+```
+
+### `embed_to_plain_text(embed) -> str`
+
+Command-agnostic renderer used by the Copy Text button. Walks the embed's title and fields into plain text: single-line field values become `Name: value`; multi-line values are placed on their own lines beneath the field name.
 
 ---
 
@@ -63,7 +74,7 @@ The options list is baked in at class-creation time. To change options, pass a d
 
 ---
 
-### `make_draft_view(store, command_name, draft_embed_fn, final_embed_fn, plain_text_fn, *, has_materials, edit_modal_factory) -> type`
+### `make_draft_view(store, command_name, draft_embed_fn, final_embed_fn, *, has_materials, edit_modal_factory) -> type`
 
 Factory that returns a `DraftView` class pre-wired to the given store and builder functions.
 
@@ -72,8 +83,7 @@ Factory that returns a `DraftView` class pre-wired to the given store and builde
 | `store` | The cog's module-level `drafts` dict |
 | `command_name` | Used in log messages |
 | `draft_embed_fn(user, draft)` | Builds the in-progress embed |
-| `final_embed_fn(user, draft)` | Builds the submitted embed |
-| `plain_text_fn(user, draft)` | Builds the plain-text copy string |
+| `final_embed_fn(user, draft)` | Builds the submitted embed (also the source the Copy Text button reads) |
 | `has_materials` | `True` → includes ➕ Add Material and ↩️ Undo Last buttons |
 | `edit_modal_factory` | Optional. When provided, adds a ✏️ Edit button. Called as `factory(key, store, draft_embed_fn, view_cls)` — must return a `discord.ui.Modal` |
 

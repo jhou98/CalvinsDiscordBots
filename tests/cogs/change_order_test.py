@@ -297,30 +297,6 @@ async def test_draft_view_has_no_timeout():
 
 
 # ---------------------------------------------------------------------------
-# SubmittedView
-# ---------------------------------------------------------------------------
-
-
-class TestSubmittedView:
-    async def test_copy_text_sends_ephemeral(self, mock_interaction):
-        await SubmittedView("text").copy_text.callback(mock_interaction)
-        assert mock_interaction.response.send_message.call_args.kwargs.get("ephemeral") is True
-
-    async def test_copy_text_contains_plain_text(self, mock_interaction):
-        await SubmittedView("some plain text").copy_text.callback(mock_interaction)
-        sent = mock_interaction.response.send_message.call_args.args[0]
-        assert "some plain text" in sent
-
-    async def test_copy_text_wrapped_in_code_block(self, mock_interaction):
-        await SubmittedView("text").copy_text.callback(mock_interaction)
-        sent = mock_interaction.response.send_message.call_args.args[0]
-        assert sent.startswith("```") and sent.endswith("```")
-
-    async def test_submitted_view_has_no_timeout(self):
-        assert SubmittedView("text").timeout is None
-
-
-# ---------------------------------------------------------------------------
 # Background sweep
 # ---------------------------------------------------------------------------
 
@@ -421,14 +397,14 @@ class TestChangeOrderCog:
 
 
 # ---------------------------------------------------------------------------
-# _build_change_order_embed / _format_plain_text
+# _build_change_order_embed
 # ---------------------------------------------------------------------------
 
 
 class TestBuildChangeOrderEmbed:
     def _make_user(self):
         user = MagicMock(spec=discord.Member)
-        user.mention = "<@1>"
+        user.display_name = "Tester"
         return user
 
     def test_returns_embed(self):
@@ -495,48 +471,3 @@ class TestBuildChangeOrderEmbed:
         )
         field_names = [f.name for f in embed.fields]
         assert any("1 item" in name and "items" not in name for name in field_names)
-
-
-class TestFormatPlainText:
-    def _make_user(self, display_name="Jack"):
-        user = MagicMock(spec=discord.Member)
-        user.display_name = display_name
-        return user
-
-    def test_contains_date(self):
-        from src.cogs.change_order import _format_plain_text
-
-        result = _format_plain_text(self._make_user(), "01/01/2025", "Install panel", [])
-        assert "01/01/2025" in result
-
-    def test_contains_display_name(self):
-        from src.cogs.change_order import _format_plain_text
-
-        result = _format_plain_text(self._make_user("Jack"), "01/01/2025", "Install panel", [])
-        assert "Jack" in result
-
-    def test_contains_scope(self):
-        from src.cogs.change_order import _format_plain_text
-
-        result = _format_plain_text(self._make_user(), "01/01/2025", "Run new circuits", [])
-        assert "Run new circuits" in result
-
-    def test_materials_formatted_correctly(self):
-        from src.cogs.change_order import _format_plain_text
-
-        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", [("Breaker", "3")])
-        assert "Breaker - 3" in result
-
-    def test_empty_materials_shows_placeholder(self):
-        from src.cogs.change_order import _format_plain_text
-
-        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", [])
-        assert "No materials listed." in result
-
-    def test_multiple_materials(self):
-        from src.cogs.change_order import _format_plain_text
-
-        materials = [("Breaker", "3"), ("12 AWG Wire", "2")]
-        result = _format_plain_text(self._make_user(), "01/01/2025", "Scope", materials)
-        assert "Breaker - 3" in result
-        assert "12 AWG Wire - 2" in result

@@ -75,29 +75,7 @@ def _final_embed(user, draft: DraftMatOrder) -> discord.Embed:
     return _embed(user, draft, title="📋 Material Order — Submitted", color=discord.Color.green())
 
 
-def _plain_text(user, draft: DraftMatOrder) -> str:
-    lines = [
-        "MATERIAL ORDER",
-        f"Date Requested: {draft.date_requested}",
-        f"Requested By:   {draft.requested_by}",
-        f"Required Date:  {draft.required_date}",
-        f"Contact Name:  {draft.site_contact_name}",
-        f"Contact Phone: {draft.site_contact_phone}",
-    ]
-    if draft.delivery_notes:
-        lines += ["", "Delivery Notes:", draft.delivery_notes]
-    lines += ["", "Materials:"]
-    lines += (
-        [f"  {n} - {q}" for n, q in draft.materials]
-        if draft.materials
-        else ["  No materials listed."]
-    )
-    return "\n".join(lines)
-
-
-DraftView = make_draft_view(
-    drafts, COMMAND, _draft_embed, _final_embed, _plain_text, has_materials=True
-)
+DraftView = make_draft_view(drafts, COMMAND, _draft_embed, _final_embed, has_materials=True)
 
 
 # ---------------------------------------------------------------------------
